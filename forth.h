@@ -29,7 +29,7 @@ typedef struct Word
     void (*func)(); // Function pointer for built-in words
     Cell *code;     // Code field for user-defined words
     int code_size;
-    int immediate;  // 1 if word executes immediately even in compile mode
+    int immediate; // 1 if word executes immediately even in compile mode
     struct Word *next;
 } Word;
 
@@ -52,7 +52,8 @@ extern int code_sp;                  // Code stack pointer
 extern Word *current_word;           // Current word being compiled
 
 // Control flow
-typedef enum {
+typedef enum
+{
     CF_IF,
     CF_ELSE,
     CF_BEGIN,

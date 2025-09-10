@@ -1,60 +1,70 @@
 #include "forth.h"
 
 // Global structures
-Stack data_stack = { {0}, -1 };
-Stack return_stack = { {0}, -1 };
-Dictionary dict = { {NULL}, 0 };
+Stack data_stack = {{0}, -1};
+Stack return_stack = {{0}, -1};
+Dictionary dict = {{NULL}, 0};
 Cell memory[STACK_SIZE] = {0};
 Cell code_buffer[STACK_SIZE] = {0};
 int base = 10;
-int state = 0;  // 0: interpreting, 1: compiling
-int code_sp = 0; // Code stack pointer
+int state = 0;             // 0: interpreting, 1: compiling
+int code_sp = 0;           // Code stack pointer
 Word *current_word = NULL; // Current word being compiled
-int next_mem_addr = 0; // Next available memory address
+int next_mem_addr = 0;     // Next available memory address
 
 // Input handling
 char *current_input = NULL;
 char *input_pos = NULL;
 
 // Control flow
-BranchStack branch_stack = { {{0, CF_END}}, -1 };
+BranchStack branch_stack = {{{0, CF_END}}, -1};
 
 // Stack operations
-void stack_push(Cell value) {
-    if (data_stack.sp >= STACK_SIZE - 1) {
+void stack_push(Cell value)
+{
+    if (data_stack.sp >= STACK_SIZE - 1)
+    {
         error("Stack overflow");
         return;
     }
     data_stack.stack[++data_stack.sp] = value;
 }
 
-Cell stack_pop(void) {
-    if (data_stack.sp < 0) {
+Cell stack_pop(void)
+{
+    if (data_stack.sp < 0)
+    {
         error("Stack underflow");
         return 0;
     }
     return data_stack.stack[data_stack.sp--];
 }
 
-Cell stack_peek(void) {
-    if (data_stack.sp < 0) {
+Cell stack_peek(void)
+{
+    if (data_stack.sp < 0)
+    {
         error("Stack underflow");
         return 0;
     }
     return data_stack.stack[data_stack.sp];
 }
 
-int stack_empty(void) {
+int stack_empty(void)
+{
     return data_stack.sp < 0;
 }
 
-int stack_full(void) {
+int stack_full(void)
+{
     return data_stack.sp >= STACK_SIZE - 1;
 }
 
 // Branch stack operations
-void branch_stack_push(int origin, ControlFlowType type) {
-    if (branch_stack.top >= STACK_SIZE - 1) {
+void branch_stack_push(int origin, ControlFlowType type)
+{
+    if (branch_stack.top >= STACK_SIZE - 1)
+    {
         error("Branch stack overflow");
         return;
     }
@@ -63,17 +73,23 @@ void branch_stack_push(int origin, ControlFlowType type) {
     branch_stack.entries[branch_stack.top].type = type;
 }
 
-BranchEntry branch_stack_pop(void) {
-    if (branch_stack.top < 0) {
+BranchEntry branch_stack_pop(void)
+{
+    if (branch_stack.top < 0)
+    {
         error("Branch stack underflow");
         BranchEntry empty = {0, CF_END};
         return empty;
     }
-    return branch_stack.entries[branch_stack.top--];
+    BranchEntry entry = branch_stack.entries[branch_stack.top];
+    branch_stack.top--;
+    return entry;
 }
 
-BranchEntry branch_stack_peek(void) {
-    if (branch_stack.top < 0) {
+BranchEntry branch_stack_peek(void)
+{
+    if (branch_stack.top < 0)
+    {
         error("Branch stack underflow");
         BranchEntry empty = {0, CF_END};
         return empty;
@@ -81,29 +97,36 @@ BranchEntry branch_stack_peek(void) {
     return branch_stack.entries[branch_stack.top];
 }
 
-int branch_stack_empty(void) {
+int branch_stack_empty(void)
+{
     return branch_stack.top < 0;
 }
 
 // Dictionary operations
-void dict_init(void) {
+void dict_init(void)
+{
     dict.count = 0;
     // Initialize built-in words here later
     memset(dict.words, 0, sizeof(dict.words));
 }
 
-Word *dict_find(const char *name) {
+Word *dict_find(const char *name)
+{
     // Simple linear search for now; optimize with hash later
-    for (int i = 0; i < dict.count; i++) {
-        if (strcmp(dict.words[i]->name, name) == 0) {
+    for (int i = 0; i < dict.count; i++)
+    {
+        if (strcmp(dict.words[i]->name, name) == 0)
+        {
             return dict.words[i];
         }
     }
     return NULL;
 }
 
-void dict_add(Word *word) {
-    if (dict.count >= DICT_SIZE) {
+void dict_add(Word *word)
+{
+    if (dict.count >= DICT_SIZE)
+    {
         error("Dictionary full");
         return;
     }
@@ -111,28 +134,33 @@ void dict_add(Word *word) {
 }
 
 // Basic error handling
-void error(const char *msg) {
+void error(const char *msg)
+{
     fprintf(stderr, "Error: %s\n", msg);
     // Reset stacks and state to continue execution
     data_stack.sp = -1;
     return_stack.sp = -1;
     branch_stack.top = -1;
-    state = 0;  // Back to interpret mode
+    state = 0; // Back to interpret mode
     code_sp = 0;
     current_word = NULL;
 }
 
 // Memory operations
-void mem_store(int addr, Cell value) {
-    if (addr < 0 || addr >= STACK_SIZE) {
+void mem_store(int addr, Cell value)
+{
+    if (addr < 0 || addr >= STACK_SIZE)
+    {
         error("Invalid memory address");
         return;
     }
     memory[addr] = value;
 }
 
-Cell mem_fetch(int addr) {
-    if (addr < 0 || addr >= STACK_SIZE) {
+Cell mem_fetch(int addr)
+{
+    if (addr < 0 || addr >= STACK_SIZE)
+    {
         error("Invalid memory address");
         return 0;
     }
@@ -140,44 +168,53 @@ Cell mem_fetch(int addr) {
 }
 
 // I/O operations
-void print_cell(Cell value) {
+void print_cell(Cell value)
+{
     printf("%lld ", value);
 }
 
-void print_stack(void) {
+void print_stack(void)
+{
     printf("< ");
-    for (int i = 0; i <= data_stack.sp; i++) {
+    for (int i = 0; i <= data_stack.sp; i++)
+    {
         printf("%lld ", data_stack.stack[i]);
     }
     printf("> ");
 }
 
-void cr(void) {
+void cr(void)
+{
     printf("\n");
 }
 
 // Built-in arithmetic operations
-void plus(void) {
+void plus(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a + b);
 }
 
-void minus(void) {
+void minus(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a - b);
 }
 
-void star(void) {
+void star(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a * b);
 }
 
-void slash(void) {
+void slash(void)
+{
     Cell b = stack_pop();
-    if (b == 0) {
+    if (b == 0)
+    {
         error("Division by zero");
         return;
     }
@@ -185,9 +222,11 @@ void slash(void) {
     stack_push(a / b);
 }
 
-void mod(void) {
+void mod(void)
+{
     Cell b = stack_pop();
-    if (b == 0) {
+    if (b == 0)
+    {
         error("Modulo by zero");
         return;
     }
@@ -196,23 +235,27 @@ void mod(void) {
 }
 
 // Built-in stack operations
-void dup(void) {
+void dup(void)
+{
     Cell top = stack_peek();
     stack_push(top);
 }
 
-void drop(void) {
+void drop(void)
+{
     stack_pop();
 }
 
-void swap(void) {
+void swap(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(b);
     stack_push(a);
 }
 
-void over(void) {
+void over(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a);
@@ -220,7 +263,8 @@ void over(void) {
     stack_push(a);
 }
 
-void rot(void) {
+void rot(void)
+{
     Cell c = stack_pop();
     Cell b = stack_pop();
     Cell a = stack_pop();
@@ -229,13 +273,15 @@ void rot(void) {
     stack_push(a);
 }
 
-void nip(void) {
+void nip(void)
+{
     Cell b = stack_pop();
     stack_pop(); // discard a
     stack_push(b);
 }
 
-void tuck(void) {
+void tuck(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(b);
@@ -244,75 +290,87 @@ void tuck(void) {
 }
 
 // Built-in comparison operations
-void equal(void) {
+void equal(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a == b ? -1 : 0);
 }
 
-void less_than(void) {
+void less_than(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a < b ? -1 : 0);
 }
 
-void greater_than(void) {
+void greater_than(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a > b ? -1 : 0);
 }
 
-void less_equal(void) {
+void less_equal(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a <= b ? -1 : 0);
 }
 
-void greater_equal(void) {
+void greater_equal(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a >= b ? -1 : 0);
 }
 
-void not_equal(void) {
+void not_equal(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a != b ? -1 : 0);
 }
 
 // Built-in logical operations
-void and_op(void) {
+void and_op(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a & b);
 }
 
-void or_op(void) {
+void or_op(void)
+{
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a | b);
 }
 
-void not_op(void) {
+void not_op(void)
+{
     Cell a = stack_pop();
     stack_push(~a);
 }
 
 // Built-in memory operations
-void store(void) {
+void store(void)
+{
     Cell addr = stack_pop();
     Cell value = stack_pop();
     mem_store(addr, value);
 }
 
-void fetch(void) {
+void fetch(void)
+{
     Cell addr = stack_pop();
     Cell value = mem_fetch(addr);
     stack_push(value);
 }
 
 // Built-in CREATE word
-void create_word(void) {
+void create_word(void)
+{
     // In a full implementation, this would read the next token
     // For now, we'll create a simple variable word
     // This is a placeholder implementation
@@ -333,9 +391,11 @@ void create_word(void) {
 }
 
 // Built-in VARIABLE word
-void variable_word(void) {
+void variable_word(void)
+{
     char name[MAX_WORD_LEN];
-    if (!tokenize(name)) {
+    if (!tokenize(name))
+    {
         error("VARIABLE needs a name");
         return;
     }
@@ -352,9 +412,11 @@ void variable_word(void) {
 }
 
 // Built-in CONSTANT word
-void constant_word(void) {
+void constant_word(void)
+{
     char name[MAX_WORD_LEN];
-    if (!tokenize(name)) {
+    if (!tokenize(name))
+    {
         error("CONSTANT needs a name");
         return;
     }
@@ -371,138 +433,196 @@ void constant_word(void) {
 }
 
 // Execute user-defined word
-void execute_word(Word *word) {
-    if (word->func) {
+void execute_word(Word *word)
+{
+    if (word->func)
+    {
         word->func();
         return;
     }
 
     // Execute code for user-defined word
-    for (int i = 0; i < word->code_size; i++) {
+    for (int i = 0; i < word->code_size; i++)
+    {
         Cell item = word->code[i];
-        if (item == OP_LIT) {
+        if (item == OP_LIT)
+        {
             // Next item is literal value
             i++;
             stack_push(word->code[i]);
-        } else if (item == OP_BRANCH) {
+        }
+        else if (item == OP_BRANCH)
+        {
             // Unconditional branch
-            i++;
-            i += word->code[i] - 1; // -1 because loop will increment
-        } else if (item == OP_0BRANCH) {
+            i++; // Skip OP_LIT
+            i++; // Skip to offset
+            Cell offset = word->code[i];
+            i += offset - 1; // -1 because loop will increment
+        }
+        else if (item == OP_0BRANCH)
+        {
             // Conditional branch
-            i++;
+            i++; // Skip OP_LIT
+            i++; // Skip to offset
+            Cell offset = word->code[i];
             Cell top = stack_pop();
-            if (top == 0) {
-                i += word->code[i] - 1;
+            if (top == 0)
+            {
+                i += offset - 1;
             }
-        } else {
-            // Assume it's an address of another word
-            Word *w = (Word *)item;
-            execute_word(w);
+        }
+        else
+        {
+            // Check if it's a valid word pointer (word pointers are usually large addresses)
+            if (item > 1000 && item < 10000000000000000LL) // Reasonable range for pointers
+            {
+                Word *w = (Word *)item;
+                if (w && w->name && w->name[0] != '\0') // Basic validation
+                {
+                    execute_word(w);
+                }
+                else
+                {
+                    error("Invalid word reference");
+                }
+            }
+            else
+            {
+                // It's a small number, treat it as a literal
+                stack_push(item);
+            }
         }
     }
 }
 
 // Built-in I/O operations
-void dot(void) {
+void dot(void)
+{
     Cell value = stack_pop();
     print_cell(value);
 }
 
-void dot_s(void) {
+void dot_s(void)
+{
     print_stack();
 }
 
 // Control flow functions
-void if_word(void) {
+void if_word(void)
+{
     // In compile mode, compile a conditional branch
-    if (state) {
+    if (state)
+    {
         // Push current code position and IF type to branch stack
         branch_stack_push(code_sp, CF_IF);
         // Compile 0BRANCH opcode (conditional branch)
         code_buffer[code_sp++] = OP_0BRANCH;
-        // Reserve space for branch offset (will be filled in by THEN/ELSE)
+        // Reserve space for branch offset as literal (will be filled in by THEN/ELSE)
+        code_buffer[code_sp++] = OP_LIT;
         code_buffer[code_sp++] = 0;
-    } else {
+    }
+    else
+    {
         error("IF used outside of compilation mode");
     }
 }
 
-void then_word(void) {
-    if (state) {
-        if (branch_stack_empty()) {
+void then_word(void)
+{
+    if (state)
+    {
+        if (branch_stack_empty())
+        {
             error("THEN without matching IF");
             return;
         }
 
         BranchEntry entry = branch_stack_pop();
-        if (entry.type != CF_IF && entry.type != CF_ELSE) {
+        if (entry.type != CF_IF && entry.type != CF_ELSE)
+        {
             error("THEN without matching IF");
             return;
         }
 
         // Fill in the branch offset
-        code_buffer[entry.origin + 1] = code_sp - (entry.origin + 1);
-    } else {
+        Cell offset = code_sp - (entry.origin + 2);
+        code_buffer[entry.origin + 2] = offset;
+    }
+    else
+    {
         error("THEN used outside of compilation mode");
     }
 }
 
-void else_word(void) {
-    if (state) {
-        if (branch_stack_empty()) {
+void else_word(void)
+{
+    if (state)
+    {
+        if (branch_stack_empty())
+        {
             error("ELSE without matching IF");
             return;
         }
 
         BranchEntry entry = branch_stack_peek();
-        if (entry.type != CF_IF) {
+        if (entry.type != CF_IF)
+        {
             error("ELSE without matching IF");
             return;
         }
 
         // First, complete the IF branch to jump over the ELSE part
         // Compile unconditional branch
-        code_buffer[code_sp++] = OP_BRANCH;
-        // Reserve space for branch offset (will be filled in by THEN)
         int else_branch_origin = code_sp;
+        code_buffer[code_sp++] = OP_BRANCH;
+        // Reserve space for branch offset as literal (will be filled in by THEN)
+        code_buffer[code_sp++] = OP_LIT;
         code_buffer[code_sp++] = 0;
 
         // Fix up the IF branch to point to here
-        code_buffer[entry.origin + 1] = code_sp - (entry.origin + 1);
+        // Target is code_sp + 3 (after ELSE branch compilation)
+        Cell if_offset = (code_sp + 3) - (entry.origin + 2);
+        code_buffer[entry.origin + 2] = if_offset;
 
         // Pop the IF entry and push the ELSE entry
         branch_stack_pop();
         branch_stack_push(else_branch_origin, CF_ELSE);
-    } else {
+    }
+    else
+    {
         error("ELSE used outside of compilation mode");
     }
 }
 
-void end_word(void) {
+void end_word(void)
+{
     // This would be used to end definitions, but we already have semicolon()
     // This function might be redundant or used for other purposes
     // For now, we'll leave it as a placeholder
 }
 
-void colon(void) {
+void colon(void)
+{
     char word_name[MAX_WORD_LEN];
 
     // Read the next token as the word name
-    if (!tokenize(word_name)) {
+    if (!tokenize(word_name))
+    {
         error("Expected word name after :");
         return;
     }
 
     // Check if word already exists
-    if (dict_find(word_name)) {
+    if (dict_find(word_name))
+    {
         error("Word already exists");
         return;
     }
 
     // Create new word
     Word *new_word = malloc(sizeof(Word));
-    if (!new_word) {
+    if (!new_word)
+    {
         error("Memory allocation failed");
         return;
     }
@@ -510,7 +630,8 @@ void colon(void) {
     strcpy(new_word->name, word_name);
     new_word->func = NULL;
     new_word->code = malloc(STACK_SIZE * sizeof(Cell));
-    if (!new_word->code) {
+    if (!new_word->code)
+    {
         free(new_word);
         error("Memory allocation failed");
         return;
@@ -524,13 +645,16 @@ void colon(void) {
     code_sp = 0; // Reset code buffer pointer
 }
 
-void semicolon(void) {
-    if (state == 0) {
+void semicolon(void)
+{
+    if (state == 0)
+    {
         error("Misplaced ;");
         return;
     }
 
-    if (!current_word) {
+    if (!current_word)
+    {
         error("No word being defined");
         return;
     }
@@ -548,46 +672,61 @@ void semicolon(void) {
     code_sp = 0;
 }
 
-void begin_word(void) {
-    if (state) {
+void begin_word(void)
+{
+    if (state)
+    {
         // Push current code position and BEGIN type to branch stack
         branch_stack_push(code_sp, CF_BEGIN);
-    } else {
+    }
+    else
+    {
         error("BEGIN used outside of compilation mode");
     }
 }
 
-void until_word(void) {
-    if (state) {
-        if (branch_stack_empty()) {
+void until_word(void)
+{
+    if (state)
+    {
+        if (branch_stack_empty())
+        {
             error("UNTIL without matching BEGIN");
             return;
         }
 
         BranchEntry entry = branch_stack_pop();
-        if (entry.type != CF_BEGIN) {
+        if (entry.type != CF_BEGIN)
+        {
             error("UNTIL without matching BEGIN");
             return;
         }
 
         // Compile conditional branch back to BEGIN
         code_buffer[code_sp++] = OP_0BRANCH;
-        // Branch offset is negative to go backward
+        // Branch offset is negative to go backward (store as literal)
+        code_buffer[code_sp++] = OP_LIT;
         code_buffer[code_sp++] = (entry.origin - code_sp);
-    } else {
+    }
+    else
+    {
         error("UNTIL used outside of compilation mode");
     }
 }
 
-void while_word(void) {
-    if (state) {
-        if (branch_stack_empty()) {
+void while_word(void)
+{
+    if (state)
+    {
+        if (branch_stack_empty())
+        {
             error("WHILE without matching BEGIN");
             return;
         }
 
         BranchEntry entry = branch_stack_peek();
-        if (entry.type != CF_BEGIN) {
+        if (entry.type != CF_BEGIN)
+        {
             error("WHILE without matching BEGIN");
             return;
         }
@@ -595,69 +734,89 @@ void while_word(void) {
         // Compile conditional branch to exit loop (like IF)
         branch_stack_push(code_sp, CF_WHILE);
         code_buffer[code_sp++] = OP_0BRANCH;
-        // Reserve space for branch offset (will be filled in by REPEAT)
+        // Reserve space for branch offset as literal (will be filled in by REPEAT)
+        code_buffer[code_sp++] = OP_LIT;
         code_buffer[code_sp++] = 0;
-    } else {
+    }
+    else
+    {
         error("WHILE used outside of compilation mode");
     }
 }
 
-void repeat_word(void) {
-    if (state) {
-        if (branch_stack_empty()) {
+void repeat_word(void)
+{
+    if (state)
+    {
+        if (branch_stack_empty())
+        {
             error("REPEAT without matching BEGIN-WHILE");
             return;
         }
 
         BranchEntry while_entry = branch_stack_pop();
-        if (while_entry.type != CF_WHILE) {
+        if (while_entry.type != CF_WHILE)
+        {
             error("REPEAT without matching WHILE");
             return;
         }
 
-        if (branch_stack_empty()) {
+        if (branch_stack_empty())
+        {
             error("REPEAT without matching BEGIN");
             return;
         }
 
         BranchEntry begin_entry = branch_stack_pop();
-        if (begin_entry.type != CF_BEGIN) {
+        if (begin_entry.type != CF_BEGIN)
+        {
             error("REPEAT without matching BEGIN");
             return;
         }
 
         // Compile unconditional branch back to BEGIN
         code_buffer[code_sp++] = OP_BRANCH;
-        // Branch offset is negative to go backward
+        // Branch offset is negative to go backward (store as literal)
+        code_buffer[code_sp++] = OP_LIT;
         code_buffer[code_sp++] = (begin_entry.origin - code_sp);
 
         // Fix up the WHILE branch to point to after the loop
-        code_buffer[while_entry.origin + 1] = code_sp - (while_entry.origin + 1);
-    } else {
+        code_buffer[while_entry.origin + 2] = code_sp - (while_entry.origin + 2);
+    }
+    else
+    {
         error("REPEAT used outside of compilation mode");
     }
 }
 
-void do_word(void) {
-    if (state) {
+void do_word(void)
+{
+    if (state)
+    {
         // Push current code position and DO type to branch stack
         branch_stack_push(code_sp, CF_DO);
         // In a full implementation, we would compile code to set up the loop variables
         // For now, this is a placeholder
-    } else {
+    }
+    else
+    {
         error("DO used outside of compilation mode");
     }
 }
 
-void loop_word(void) {
-    if (state) {
-        if (branch_stack_empty()) {
+void loop_word(void)
+{
+    if (state)
+    {
+        if (branch_stack_empty())
+        {
             error("LOOP without matching DO");
             return;
         }
 
         BranchEntry entry = branch_stack_pop();
-        if (entry.type != CF_DO) {
+        if (entry.type != CF_DO)
+        {
             error("LOOP without matching DO");
             return;
         }
@@ -665,14 +824,18 @@ void loop_word(void) {
         // In a full implementation, we would compile code to increment index and check limit
         // For now, compile a simple branch back
         code_buffer[code_sp++] = OP_BRANCH;
+        code_buffer[code_sp++] = OP_LIT;
         code_buffer[code_sp++] = (entry.origin - code_sp);
-    } else {
+    }
+    else
+    {
         error("LOOP used outside of compilation mode");
     }
 }
 
 // Initialize the interpreter
-void forth_init(void) {
+void forth_init(void)
+{
     dict_init();
     data_stack.sp = -1;
     return_stack.sp = -1;
@@ -1055,14 +1218,19 @@ void forth_init(void) {
 }
 
 // Simple tokenizer (basic implementation)
-char *tokenize(char *token) {
+char *tokenize(char *token)
+{
     // Skip whitespace
-    while (*input_pos && isspace(*input_pos)) input_pos++;
-    if (!*input_pos) return NULL;
+    while (*input_pos && isspace(*input_pos))
+        input_pos++;
+    if (!*input_pos)
+        return NULL;
 
     char *start = input_pos;
-    while (*input_pos && !isspace(*input_pos)) input_pos++;
-    if (*input_pos) *input_pos++ = '\0';
+    while (*input_pos && !isspace(*input_pos))
+        input_pos++;
+    if (*input_pos)
+        *input_pos++ = '\0';
 
     strncpy(token, start, MAX_WORD_LEN - 1);
     token[MAX_WORD_LEN - 1] = '\0';
@@ -1070,27 +1238,37 @@ char *tokenize(char *token) {
 }
 
 // Main interpreter loop (REPL)
-void repl(void) {
+void repl(void)
+{
     char line[MAX_LINE_LEN];
     char token[MAX_WORD_LEN];
 
     printf("Forth Interpreter Ready. Type 'quit' to exit.\n");
 
-    while (fgets(line, sizeof(line), stdin)) {
-        if (strcmp(line, "quit\n") == 0) break;
+    while (fgets(line, sizeof(line), stdin))
+    {
+        if (strcmp(line, "quit\n") == 0)
+            break;
 
         current_input = line;
         input_pos = line;
-        while (tokenize(token) != NULL) {
-            if (state == 1) { // Compile mode
+        while (tokenize(token) != NULL)
+        {
+            if (state == 1)
+            { // Compile mode
                 Word *word = dict_find(token);
-                if (word) {
-                    if (word->immediate) {
+                if (word)
+                {
+                    if (word->immediate)
+                    {
                         // Execute immediate word even in compile mode
                         execute_word(word);
-                    } else {
+                    }
+                    else
+                    {
                         // Compile word reference
-                        if (code_sp >= STACK_SIZE) {
+                        if (code_sp >= STACK_SIZE)
+                        {
                             error("Code buffer overflow");
                             state = 0;
                             current_word = NULL;
@@ -1098,13 +1276,17 @@ void repl(void) {
                         }
                         code_buffer[code_sp++] = (Cell)word;
                     }
-                } else {
+                }
+                else
+                {
                     // Try to parse as number
                     char *endptr;
                     Cell num = strtoll(token, &endptr, base);
-                    if (*endptr == '\0') {
+                    if (*endptr == '\0')
+                    {
                         // Compile literal
-                        if (code_sp >= STACK_SIZE - 1) {
+                        if (code_sp >= STACK_SIZE - 1)
+                        {
                             error("Code buffer overflow");
                             state = 0;
                             current_word = NULL;
@@ -1112,40 +1294,52 @@ void repl(void) {
                         }
                         code_buffer[code_sp++] = OP_LIT;
                         code_buffer[code_sp++] = num;
-                    } else {
+                    }
+                    else
+                    {
                         error("Unknown word in compilation");
                         state = 0;
                         current_word = NULL;
                         break;
                     }
                 }
-            } else { // Interpret mode
+            }
+            else
+            { // Interpret mode
                 Word *word = dict_find(token);
-                if (word) {
+                if (word)
+                {
                     // Execute word
                     execute_word(word);
-                } else {
+                }
+                else
+                {
                     // Try to parse as number
                     char *endptr;
                     Cell num = strtoll(token, &endptr, base);
-                    if (*endptr == '\0') {
+                    if (*endptr == '\0')
+                    {
                         stack_push(num);
-                    } else {
+                    }
+                    else
+                    {
                         error("Unknown word");
                     }
                 }
             }
         }
-        print_stack();
-        cr();
+        // print_stack();
+        // cr();
     }
 }
 
-int main(void) {
+int main(void)
+{
     forth_init();
     repl();
     // Free allocated words on exit (for completeness)
-    for (int i = 0; i < dict.count; i++) {
+    for (int i = 0; i < dict.count; i++)
+    {
         free(dict.words[i]);
     }
     return 0;
