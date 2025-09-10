@@ -13,7 +13,7 @@
 #define MAX_LINE_LEN 256
 
 // Data types
-typedef int Cell; // Assuming 32-bit integers for simplicity
+typedef long long Cell; // Use long long for pointers and integers
 
 // Stack structure
 typedef struct

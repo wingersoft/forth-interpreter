@@ -10,6 +10,7 @@ int base = 10;
 int state = 0;  // 0: interpreting, 1: compiling
 int code_sp = 0; // Code stack pointer
 Word *current_word = NULL; // Current word being compiled
+int next_mem_addr = 0; // Next available memory address
 
 // Control flow
 BranchStack branch_stack = { {{0, CF_END}}, -1 };
@@ -108,9 +109,13 @@ void dict_add(Word *word) {
 // Basic error handling
 void error(const char *msg) {
     fprintf(stderr, "Error: %s\n", msg);
-    // Reset state if needed
+    // Reset stacks and state to continue execution
     data_stack.sp = -1;
-    exit(1);  // For simplicity; make non-fatal later
+    return_stack.sp = -1;
+    branch_stack.top = -1;
+    state = 0;  // Back to interpret mode
+    code_sp = 0;
+    current_word = NULL;
 }
 
 // Memory operations
@@ -132,13 +137,13 @@ Cell mem_fetch(int addr) {
 
 // I/O operations
 void print_cell(Cell value) {
-    printf("%d ", value);
+    printf("%lld ", value);
 }
 
 void print_stack(void) {
     printf("< ");
     for (int i = 0; i <= data_stack.sp; i++) {
-        printf("%d ", data_stack.stack[i]);
+        printf("%lld ", data_stack.stack[i]);
     }
     printf("> ");
 }
@@ -196,11 +201,164 @@ void drop(void) {
     stack_pop();
 }
 
+void swap(void) {
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(b);
+    stack_push(a);
+}
+
+void over(void) {
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a);
+    stack_push(b);
+    stack_push(a);
+}
+
+void rot(void) {
+    Cell c = stack_pop();
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(b);
+    stack_push(c);
+    stack_push(a);
+}
+
+void nip(void) {
+    Cell b = stack_pop();
+    stack_pop(); // discard a
+    stack_push(b);
+}
+
+void tuck(void) {
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(b);
+    stack_push(a);
+    stack_push(b);
+}
+
 // Built-in comparison operations
 void equal(void) {
     Cell b = stack_pop();
     Cell a = stack_pop();
     stack_push(a == b ? -1 : 0);
+}
+
+void less_than(void) {
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a < b ? -1 : 0);
+}
+
+void greater_than(void) {
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a > b ? -1 : 0);
+}
+
+void less_equal(void) {
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a <= b ? -1 : 0);
+}
+
+void greater_equal(void) {
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a >= b ? -1 : 0);
+}
+
+void not_equal(void) {
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a != b ? -1 : 0);
+}
+
+// Built-in logical operations
+void and_op(void) {
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a & b);
+}
+
+void or_op(void) {
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a | b);
+}
+
+void not_op(void) {
+    Cell a = stack_pop();
+    stack_push(~a);
+}
+
+// Built-in memory operations
+void store(void) {
+    Cell addr = stack_pop();
+    Cell value = stack_pop();
+    mem_store(addr, value);
+}
+
+void fetch(void) {
+    Cell addr = stack_pop();
+    Cell value = mem_fetch(addr);
+    stack_push(value);
+}
+
+// Built-in CREATE word
+void create_word(void) {
+    // In a full implementation, this would read the next token
+    // For now, we'll create a simple variable word
+    // This is a placeholder implementation
+    int addr = next_mem_addr++;
+    Word *new_word = malloc(sizeof(Word));
+    // For simplicity, create a word named "var" + addr
+    char name[32];
+    sprintf(name, "var%d", addr);
+    strcpy(new_word->name, name);
+    new_word->func = NULL;
+    new_word->code = malloc(sizeof(Cell));
+    new_word->code[0] = addr; // Push address
+    new_word->code_size = 1;
+    new_word->next = NULL;
+    dict_add(new_word);
+    // Push the address to stack for immediate use
+    stack_push(addr);
+}
+
+// Execute user-defined word
+void execute_word(Word *word) {
+    if (word->func) {
+        word->func();
+        return;
+    }
+
+    // Execute code for user-defined word
+    for (int i = 0; i < word->code_size; i++) {
+        Cell item = word->code[i];
+        if (item == OP_LIT) {
+            // Next item is literal value
+            i++;
+            stack_push(word->code[i]);
+        } else if (item == OP_BRANCH) {
+            // Unconditional branch
+            i++;
+            i += word->code[i] - 1; // -1 because loop will increment
+        } else if (item == OP_0BRANCH) {
+            // Conditional branch
+            i++;
+            Cell top = stack_pop();
+            if (top == 0) {
+                i += word->code[i] - 1;
+            }
+        } else {
+            // Assume it's an address of another word
+            Word *w = (Word *)item;
+            execute_word(w);
+        }
+    }
 }
 
 // Built-in I/O operations
@@ -401,6 +559,39 @@ void repeat_word(void) {
     }
 }
 
+void do_word(void) {
+    if (state) {
+        // Push current code position and DO type to branch stack
+        branch_stack_push(code_sp, CF_DO);
+        // In a full implementation, we would compile code to set up the loop variables
+        // For now, this is a placeholder
+    } else {
+        error("DO used outside of compilation mode");
+    }
+}
+
+void loop_word(void) {
+    if (state) {
+        if (branch_stack_empty()) {
+            error("LOOP without matching DO");
+            return;
+        }
+
+        BranchEntry entry = branch_stack_pop();
+        if (entry.type != CF_DO) {
+            error("LOOP without matching DO");
+            return;
+        }
+
+        // In a full implementation, we would compile code to increment index and check limit
+        // For now, compile a simple branch back
+        code_buffer[code_sp++] = OP_BRANCH;
+        code_buffer[code_sp++] = (entry.origin - code_sp);
+    } else {
+        error("LOOP used outside of compilation mode");
+    }
+}
+
 // Initialize the interpreter
 void forth_init(void) {
     dict_init();
@@ -469,6 +660,46 @@ void forth_init(void) {
     w_drop->next = NULL;
     dict_add(w_drop);
 
+    Word *w_swap = malloc(sizeof(Word));
+    strcpy(w_swap->name, "swap");
+    w_swap->func = swap;
+    w_swap->code = NULL;
+    w_swap->code_size = 0;
+    w_swap->next = NULL;
+    dict_add(w_swap);
+
+    Word *w_over = malloc(sizeof(Word));
+    strcpy(w_over->name, "over");
+    w_over->func = over;
+    w_over->code = NULL;
+    w_over->code_size = 0;
+    w_over->next = NULL;
+    dict_add(w_over);
+
+    Word *w_rot = malloc(sizeof(Word));
+    strcpy(w_rot->name, "rot");
+    w_rot->func = rot;
+    w_rot->code = NULL;
+    w_rot->code_size = 0;
+    w_rot->next = NULL;
+    dict_add(w_rot);
+
+    Word *w_nip = malloc(sizeof(Word));
+    strcpy(w_nip->name, "nip");
+    w_nip->func = nip;
+    w_nip->code = NULL;
+    w_nip->code_size = 0;
+    w_nip->next = NULL;
+    dict_add(w_nip);
+
+    Word *w_tuck = malloc(sizeof(Word));
+    strcpy(w_tuck->name, "tuck");
+    w_tuck->func = tuck;
+    w_tuck->code = NULL;
+    w_tuck->code_size = 0;
+    w_tuck->next = NULL;
+    dict_add(w_tuck);
+
     Word *w_equal = malloc(sizeof(Word));
     strcpy(w_equal->name, "=");
     w_equal->func = equal;
@@ -476,6 +707,94 @@ void forth_init(void) {
     w_equal->code_size = 0;
     w_equal->next = NULL;
     dict_add(w_equal);
+
+    Word *w_less = malloc(sizeof(Word));
+    strcpy(w_less->name, "<");
+    w_less->func = less_than;
+    w_less->code = NULL;
+    w_less->code_size = 0;
+    w_less->next = NULL;
+    dict_add(w_less);
+
+    Word *w_greater = malloc(sizeof(Word));
+    strcpy(w_greater->name, ">");
+    w_greater->func = greater_than;
+    w_greater->code = NULL;
+    w_greater->code_size = 0;
+    w_greater->next = NULL;
+    dict_add(w_greater);
+
+    Word *w_less_eq = malloc(sizeof(Word));
+    strcpy(w_less_eq->name, "<=");
+    w_less_eq->func = less_equal;
+    w_less_eq->code = NULL;
+    w_less_eq->code_size = 0;
+    w_less_eq->next = NULL;
+    dict_add(w_less_eq);
+
+    Word *w_greater_eq = malloc(sizeof(Word));
+    strcpy(w_greater_eq->name, ">=");
+    w_greater_eq->func = greater_equal;
+    w_greater_eq->code = NULL;
+    w_greater_eq->code_size = 0;
+    w_greater_eq->next = NULL;
+    dict_add(w_greater_eq);
+
+    Word *w_not_eq = malloc(sizeof(Word));
+    strcpy(w_not_eq->name, "<>");
+    w_not_eq->func = not_equal;
+    w_not_eq->code = NULL;
+    w_not_eq->code_size = 0;
+    w_not_eq->next = NULL;
+    dict_add(w_not_eq);
+
+    Word *w_and = malloc(sizeof(Word));
+    strcpy(w_and->name, "and");
+    w_and->func = and_op;
+    w_and->code = NULL;
+    w_and->code_size = 0;
+    w_and->next = NULL;
+    dict_add(w_and);
+
+    Word *w_or = malloc(sizeof(Word));
+    strcpy(w_or->name, "or");
+    w_or->func = or_op;
+    w_or->code = NULL;
+    w_or->code_size = 0;
+    w_or->next = NULL;
+    dict_add(w_or);
+
+    Word *w_not = malloc(sizeof(Word));
+    strcpy(w_not->name, "not");
+    w_not->func = not_op;
+    w_not->code = NULL;
+    w_not->code_size = 0;
+    w_not->next = NULL;
+    dict_add(w_not);
+
+    Word *w_store = malloc(sizeof(Word));
+    strcpy(w_store->name, "!");
+    w_store->func = store;
+    w_store->code = NULL;
+    w_store->code_size = 0;
+    w_store->next = NULL;
+    dict_add(w_store);
+
+    Word *w_fetch = malloc(sizeof(Word));
+    strcpy(w_fetch->name, "@");
+    w_fetch->func = fetch;
+    w_fetch->code = NULL;
+    w_fetch->code_size = 0;
+    w_fetch->next = NULL;
+    dict_add(w_fetch);
+
+    Word *w_create = malloc(sizeof(Word));
+    strcpy(w_create->name, "CREATE");
+    w_create->func = create_word;
+    w_create->code = NULL;
+    w_create->code_size = 0;
+    w_create->next = NULL;
+    dict_add(w_create);
 
     Word *w_dot = malloc(sizeof(Word));
     strcpy(w_dot->name, ".");
@@ -558,6 +877,22 @@ void forth_init(void) {
     w_repeat->next = NULL;
     dict_add(w_repeat);
 
+    Word *w_do = malloc(sizeof(Word));
+    strcpy(w_do->name, "do");
+    w_do->func = do_word;
+    w_do->code = NULL;
+    w_do->code_size = 0;
+    w_do->next = NULL;
+    dict_add(w_do);
+
+    Word *w_loop = malloc(sizeof(Word));
+    strcpy(w_loop->name, "loop");
+    w_loop->func = loop_word;
+    w_loop->code = NULL;
+    w_loop->code_size = 0;
+    w_loop->next = NULL;
+    dict_add(w_loop);
+
     Word *w_end = malloc(sizeof(Word));
     strcpy(w_end->name, "end");
     w_end->func = end_word;
@@ -612,13 +947,8 @@ void repl(void) {
         while ((pos = tokenize(pos, token)) != NULL) {
             Word *word = dict_find(token);
             if (word) {
-                // Execute word (for now, assume built-in)
-                if (word->func) {
-                    word->func();
-                } else {
-                    // Handle user-defined word execution
-                    // Implementation pending
-                }
+                // Execute word
+                execute_word(word);
             } else {
                 // Try to parse as number
                 Cell num = strtol(token, NULL, base);
