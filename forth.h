@@ -29,6 +29,7 @@ typedef struct Word
     void (*func)(); // Function pointer for built-in words
     Cell *code;     // Code field for user-defined words
     int code_size;
+    int immediate;  // 1 if word executes immediately even in compile mode
     struct Word *next;
 } Word;
 
@@ -119,11 +120,20 @@ void cr(void);
 void colon(void);
 void semicolon(void);
 
+// Input handling
+extern char *current_input;
+extern char *input_pos;
+extern int next_mem_addr;
+
 // Helper functions
-char *tokenize(char *line, char *token);
+char *tokenize(char *token);
 
 // Execute user-defined word
 void execute_word(Word *word);
+
+// Defining words
+void variable_word(void);
+void constant_word(void);
 
 // Helper functions
 int dict_find_index(const char *name);

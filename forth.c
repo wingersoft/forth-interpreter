@@ -12,6 +12,10 @@ int code_sp = 0; // Code stack pointer
 Word *current_word = NULL; // Current word being compiled
 int next_mem_addr = 0; // Next available memory address
 
+// Input handling
+char *current_input = NULL;
+char *input_pos = NULL;
+
 // Control flow
 BranchStack branch_stack = { {{0, CF_END}}, -1 };
 
@@ -328,6 +332,44 @@ void create_word(void) {
     stack_push(addr);
 }
 
+// Built-in VARIABLE word
+void variable_word(void) {
+    char name[MAX_WORD_LEN];
+    if (!tokenize(name)) {
+        error("VARIABLE needs a name");
+        return;
+    }
+    int addr = next_mem_addr++;
+    Word *new_word = malloc(sizeof(Word));
+    strcpy(new_word->name, name);
+    new_word->func = NULL;
+    new_word->code = malloc(2 * sizeof(Cell));
+    new_word->code[0] = OP_LIT;
+    new_word->code[1] = addr;
+    new_word->code_size = 2;
+    new_word->next = NULL;
+    dict_add(new_word);
+}
+
+// Built-in CONSTANT word
+void constant_word(void) {
+    char name[MAX_WORD_LEN];
+    if (!tokenize(name)) {
+        error("CONSTANT needs a name");
+        return;
+    }
+    Cell value = stack_pop();
+    Word *new_word = malloc(sizeof(Word));
+    strcpy(new_word->name, name);
+    new_word->func = NULL;
+    new_word->code = malloc(2 * sizeof(Cell));
+    new_word->code[0] = OP_LIT;
+    new_word->code[1] = value;
+    new_word->code_size = 2;
+    new_word->next = NULL;
+    dict_add(new_word);
+}
+
 // Execute user-defined word
 void execute_word(Word *word) {
     if (word->func) {
@@ -444,13 +486,42 @@ void end_word(void) {
 }
 
 void colon(void) {
-    // Switch to compile mode
+    char word_name[MAX_WORD_LEN];
+
+    // Read the next token as the word name
+    if (!tokenize(word_name)) {
+        error("Expected word name after :");
+        return;
+    }
+
+    // Check if word already exists
+    if (dict_find(word_name)) {
+        error("Word already exists");
+        return;
+    }
+
+    // Create new word
+    Word *new_word = malloc(sizeof(Word));
+    if (!new_word) {
+        error("Memory allocation failed");
+        return;
+    }
+
+    strcpy(new_word->name, word_name);
+    new_word->func = NULL;
+    new_word->code = malloc(STACK_SIZE * sizeof(Cell));
+    if (!new_word->code) {
+        free(new_word);
+        error("Memory allocation failed");
+        return;
+    }
+    new_word->code_size = 0;
+    new_word->next = NULL;
+
+    // Set current word and switch to compile mode
+    current_word = new_word;
     state = 1;
-    // In a full implementation, we would also:
-    // 1. Read the next token as the word name
-    // 2. Create a new dictionary entry
-    // 3. Set current_word to this new entry
-    // For now, we'll just switch to compile mode
+    code_sp = 0; // Reset code buffer pointer
 }
 
 void semicolon(void) {
@@ -459,14 +530,22 @@ void semicolon(void) {
         return;
     }
 
-    // Switch back to interpret mode
-    state = 0;
+    if (!current_word) {
+        error("No word being defined");
+        return;
+    }
 
-    // In a full implementation, we would also:
-    // 1. End the current word definition
-    // 2. Add the word to the dictionary
-    // 3. Reset code_sp
-    // For now, we'll just switch modes
+    // Copy compiled code from buffer to word
+    current_word->code_size = code_sp;
+    memcpy(current_word->code, code_buffer, code_sp * sizeof(Cell));
+
+    // Add to dictionary
+    dict_add(current_word);
+
+    // Reset state
+    state = 0;
+    current_word = NULL;
+    code_sp = 0;
 }
 
 void begin_word(void) {
@@ -609,6 +688,7 @@ void forth_init(void) {
     w_plus->func = plus;
     w_plus->code = NULL;
     w_plus->code_size = 0;
+    w_plus->immediate = 0;
     w_plus->next = NULL;
     dict_add(w_plus);
 
@@ -617,6 +697,7 @@ void forth_init(void) {
     w_minus->func = minus;
     w_minus->code = NULL;
     w_minus->code_size = 0;
+    w_minus->immediate = 0;
     w_minus->next = NULL;
     dict_add(w_minus);
 
@@ -625,6 +706,7 @@ void forth_init(void) {
     w_star->func = star;
     w_star->code = NULL;
     w_star->code_size = 0;
+    w_star->immediate = 0;
     w_star->next = NULL;
     dict_add(w_star);
 
@@ -633,6 +715,7 @@ void forth_init(void) {
     w_slash->func = slash;
     w_slash->code = NULL;
     w_slash->code_size = 0;
+    w_slash->immediate = 0;
     w_slash->next = NULL;
     dict_add(w_slash);
 
@@ -641,6 +724,7 @@ void forth_init(void) {
     w_mod->func = mod;
     w_mod->code = NULL;
     w_mod->code_size = 0;
+    w_mod->immediate = 0;
     w_mod->next = NULL;
     dict_add(w_mod);
 
@@ -649,6 +733,7 @@ void forth_init(void) {
     w_dup->func = dup;
     w_dup->code = NULL;
     w_dup->code_size = 0;
+    w_dup->immediate = 0;
     w_dup->next = NULL;
     dict_add(w_dup);
 
@@ -657,6 +742,7 @@ void forth_init(void) {
     w_drop->func = drop;
     w_drop->code = NULL;
     w_drop->code_size = 0;
+    w_drop->immediate = 0;
     w_drop->next = NULL;
     dict_add(w_drop);
 
@@ -665,6 +751,7 @@ void forth_init(void) {
     w_swap->func = swap;
     w_swap->code = NULL;
     w_swap->code_size = 0;
+    w_swap->immediate = 0;
     w_swap->next = NULL;
     dict_add(w_swap);
 
@@ -673,6 +760,7 @@ void forth_init(void) {
     w_over->func = over;
     w_over->code = NULL;
     w_over->code_size = 0;
+    w_over->immediate = 0;
     w_over->next = NULL;
     dict_add(w_over);
 
@@ -681,6 +769,7 @@ void forth_init(void) {
     w_rot->func = rot;
     w_rot->code = NULL;
     w_rot->code_size = 0;
+    w_rot->immediate = 0;
     w_rot->next = NULL;
     dict_add(w_rot);
 
@@ -689,6 +778,7 @@ void forth_init(void) {
     w_nip->func = nip;
     w_nip->code = NULL;
     w_nip->code_size = 0;
+    w_nip->immediate = 0;
     w_nip->next = NULL;
     dict_add(w_nip);
 
@@ -697,6 +787,7 @@ void forth_init(void) {
     w_tuck->func = tuck;
     w_tuck->code = NULL;
     w_tuck->code_size = 0;
+    w_tuck->immediate = 0;
     w_tuck->next = NULL;
     dict_add(w_tuck);
 
@@ -705,6 +796,7 @@ void forth_init(void) {
     w_equal->func = equal;
     w_equal->code = NULL;
     w_equal->code_size = 0;
+    w_equal->immediate = 0;
     w_equal->next = NULL;
     dict_add(w_equal);
 
@@ -713,6 +805,7 @@ void forth_init(void) {
     w_less->func = less_than;
     w_less->code = NULL;
     w_less->code_size = 0;
+    w_less->immediate = 0;
     w_less->next = NULL;
     dict_add(w_less);
 
@@ -721,6 +814,7 @@ void forth_init(void) {
     w_greater->func = greater_than;
     w_greater->code = NULL;
     w_greater->code_size = 0;
+    w_greater->immediate = 0;
     w_greater->next = NULL;
     dict_add(w_greater);
 
@@ -729,6 +823,7 @@ void forth_init(void) {
     w_less_eq->func = less_equal;
     w_less_eq->code = NULL;
     w_less_eq->code_size = 0;
+    w_less_eq->immediate = 0;
     w_less_eq->next = NULL;
     dict_add(w_less_eq);
 
@@ -737,6 +832,7 @@ void forth_init(void) {
     w_greater_eq->func = greater_equal;
     w_greater_eq->code = NULL;
     w_greater_eq->code_size = 0;
+    w_greater_eq->immediate = 0;
     w_greater_eq->next = NULL;
     dict_add(w_greater_eq);
 
@@ -745,6 +841,7 @@ void forth_init(void) {
     w_not_eq->func = not_equal;
     w_not_eq->code = NULL;
     w_not_eq->code_size = 0;
+    w_not_eq->immediate = 0;
     w_not_eq->next = NULL;
     dict_add(w_not_eq);
 
@@ -753,6 +850,7 @@ void forth_init(void) {
     w_and->func = and_op;
     w_and->code = NULL;
     w_and->code_size = 0;
+    w_and->immediate = 0;
     w_and->next = NULL;
     dict_add(w_and);
 
@@ -761,6 +859,7 @@ void forth_init(void) {
     w_or->func = or_op;
     w_or->code = NULL;
     w_or->code_size = 0;
+    w_or->immediate = 0;
     w_or->next = NULL;
     dict_add(w_or);
 
@@ -769,6 +868,7 @@ void forth_init(void) {
     w_not->func = not_op;
     w_not->code = NULL;
     w_not->code_size = 0;
+    w_not->immediate = 0;
     w_not->next = NULL;
     dict_add(w_not);
 
@@ -777,6 +877,7 @@ void forth_init(void) {
     w_store->func = store;
     w_store->code = NULL;
     w_store->code_size = 0;
+    w_store->immediate = 0;
     w_store->next = NULL;
     dict_add(w_store);
 
@@ -785,6 +886,7 @@ void forth_init(void) {
     w_fetch->func = fetch;
     w_fetch->code = NULL;
     w_fetch->code_size = 0;
+    w_fetch->immediate = 0;
     w_fetch->next = NULL;
     dict_add(w_fetch);
 
@@ -793,14 +895,34 @@ void forth_init(void) {
     w_create->func = create_word;
     w_create->code = NULL;
     w_create->code_size = 0;
+    w_create->immediate = 0;
     w_create->next = NULL;
     dict_add(w_create);
+
+    Word *w_variable = malloc(sizeof(Word));
+    strcpy(w_variable->name, "VARIABLE");
+    w_variable->func = variable_word;
+    w_variable->code = NULL;
+    w_variable->code_size = 0;
+    w_variable->immediate = 0;
+    w_variable->next = NULL;
+    dict_add(w_variable);
+
+    Word *w_constant = malloc(sizeof(Word));
+    strcpy(w_constant->name, "CONSTANT");
+    w_constant->func = constant_word;
+    w_constant->code = NULL;
+    w_constant->code_size = 0;
+    w_constant->immediate = 0;
+    w_constant->next = NULL;
+    dict_add(w_constant);
 
     Word *w_dot = malloc(sizeof(Word));
     strcpy(w_dot->name, ".");
     w_dot->func = dot;
     w_dot->code = NULL;
     w_dot->code_size = 0;
+    w_dot->immediate = 0;
     w_dot->next = NULL;
     dict_add(w_dot);
 
@@ -809,6 +931,7 @@ void forth_init(void) {
     w_dot_s->func = dot_s;
     w_dot_s->code = NULL;
     w_dot_s->code_size = 0;
+    w_dot_s->immediate = 0;
     w_dot_s->next = NULL;
     dict_add(w_dot_s);
 
@@ -817,6 +940,7 @@ void forth_init(void) {
     w_cr->func = cr;
     w_cr->code = NULL;
     w_cr->code_size = 0;
+    w_cr->immediate = 0;
     w_cr->next = NULL;
     dict_add(w_cr);
 
@@ -826,6 +950,7 @@ void forth_init(void) {
     w_if->func = if_word;
     w_if->code = NULL;
     w_if->code_size = 0;
+    w_if->immediate = 1;
     w_if->next = NULL;
     dict_add(w_if);
 
@@ -834,6 +959,7 @@ void forth_init(void) {
     w_then->func = then_word;
     w_then->code = NULL;
     w_then->code_size = 0;
+    w_then->immediate = 1;
     w_then->next = NULL;
     dict_add(w_then);
 
@@ -842,6 +968,7 @@ void forth_init(void) {
     w_else->func = else_word;
     w_else->code = NULL;
     w_else->code_size = 0;
+    w_else->immediate = 1;
     w_else->next = NULL;
     dict_add(w_else);
 
@@ -850,6 +977,7 @@ void forth_init(void) {
     w_begin->func = begin_word;
     w_begin->code = NULL;
     w_begin->code_size = 0;
+    w_begin->immediate = 1;
     w_begin->next = NULL;
     dict_add(w_begin);
 
@@ -858,6 +986,7 @@ void forth_init(void) {
     w_until->func = until_word;
     w_until->code = NULL;
     w_until->code_size = 0;
+    w_until->immediate = 1;
     w_until->next = NULL;
     dict_add(w_until);
 
@@ -866,6 +995,7 @@ void forth_init(void) {
     w_while->func = while_word;
     w_while->code = NULL;
     w_while->code_size = 0;
+    w_while->immediate = 1;
     w_while->next = NULL;
     dict_add(w_while);
 
@@ -874,6 +1004,7 @@ void forth_init(void) {
     w_repeat->func = repeat_word;
     w_repeat->code = NULL;
     w_repeat->code_size = 0;
+    w_repeat->immediate = 1;
     w_repeat->next = NULL;
     dict_add(w_repeat);
 
@@ -882,6 +1013,7 @@ void forth_init(void) {
     w_do->func = do_word;
     w_do->code = NULL;
     w_do->code_size = 0;
+    w_do->immediate = 1;
     w_do->next = NULL;
     dict_add(w_do);
 
@@ -890,6 +1022,7 @@ void forth_init(void) {
     w_loop->func = loop_word;
     w_loop->code = NULL;
     w_loop->code_size = 0;
+    w_loop->immediate = 1;
     w_loop->next = NULL;
     dict_add(w_loop);
 
@@ -898,6 +1031,7 @@ void forth_init(void) {
     w_end->func = end_word;
     w_end->code = NULL;
     w_end->code_size = 0;
+    w_end->immediate = 1;
     w_end->next = NULL;
     dict_add(w_end);
 
@@ -906,6 +1040,7 @@ void forth_init(void) {
     w_colon->func = colon;
     w_colon->code = NULL;
     w_colon->code_size = 0;
+    w_colon->immediate = 1;
     w_colon->next = NULL;
     dict_add(w_colon);
 
@@ -914,23 +1049,24 @@ void forth_init(void) {
     w_semicolon->func = semicolon;
     w_semicolon->code = NULL;
     w_semicolon->code_size = 0;
+    w_semicolon->immediate = 1;
     w_semicolon->next = NULL;
     dict_add(w_semicolon);
 }
 
 // Simple tokenizer (basic implementation)
-char *tokenize(char *line, char *token) {
+char *tokenize(char *token) {
     // Skip whitespace
-    while (*line && isspace(*line)) line++;
-    if (!*line) return NULL;
+    while (*input_pos && isspace(*input_pos)) input_pos++;
+    if (!*input_pos) return NULL;
 
-    char *start = line;
-    while (*line && !isspace(*line)) line++;
-    if (*line) *line++ = '\0';
+    char *start = input_pos;
+    while (*input_pos && !isspace(*input_pos)) input_pos++;
+    if (*input_pos) *input_pos++ = '\0';
 
     strncpy(token, start, MAX_WORD_LEN - 1);
     token[MAX_WORD_LEN - 1] = '\0';
-    return line;
+    return input_pos;
 }
 
 // Main interpreter loop (REPL)
@@ -943,16 +1079,61 @@ void repl(void) {
     while (fgets(line, sizeof(line), stdin)) {
         if (strcmp(line, "quit\n") == 0) break;
 
-        char *pos = line;
-        while ((pos = tokenize(pos, token)) != NULL) {
-            Word *word = dict_find(token);
-            if (word) {
-                // Execute word
-                execute_word(word);
-            } else {
-                // Try to parse as number
-                Cell num = strtol(token, NULL, base);
-                stack_push(num);
+        current_input = line;
+        input_pos = line;
+        while (tokenize(token) != NULL) {
+            if (state == 1) { // Compile mode
+                Word *word = dict_find(token);
+                if (word) {
+                    if (word->immediate) {
+                        // Execute immediate word even in compile mode
+                        execute_word(word);
+                    } else {
+                        // Compile word reference
+                        if (code_sp >= STACK_SIZE) {
+                            error("Code buffer overflow");
+                            state = 0;
+                            current_word = NULL;
+                            break;
+                        }
+                        code_buffer[code_sp++] = (Cell)word;
+                    }
+                } else {
+                    // Try to parse as number
+                    char *endptr;
+                    Cell num = strtoll(token, &endptr, base);
+                    if (*endptr == '\0') {
+                        // Compile literal
+                        if (code_sp >= STACK_SIZE - 1) {
+                            error("Code buffer overflow");
+                            state = 0;
+                            current_word = NULL;
+                            break;
+                        }
+                        code_buffer[code_sp++] = OP_LIT;
+                        code_buffer[code_sp++] = num;
+                    } else {
+                        error("Unknown word in compilation");
+                        state = 0;
+                        current_word = NULL;
+                        break;
+                    }
+                }
+            } else { // Interpret mode
+                Word *word = dict_find(token);
+                if (word) {
+                    // Execute word
+                    execute_word(word);
+                } else {
+                    // Try to parse as number
+                    char *endptr;
+                    Cell num = strtoll(token, &endptr, base);
+                    if (*endptr == '\0') {
+                        stack_push(num);
+                    } else {
+                        error("Unknown word");
+                    }
+                }
             }
         }
         print_stack();
