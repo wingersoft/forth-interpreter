@@ -18,6 +18,7 @@ char *input_pos = NULL;
 
 // Control flow
 BranchStack branch_stack = {{{0, CF_END}}, -1};
+char *parse_string(char *str);
 
 // Stack operations
 void stack_push(Cell value)
@@ -59,6 +60,48 @@ int stack_full(void)
 {
     return data_stack.sp >= STACK_SIZE - 1;
 }
+
+// Return stack operations
+void rstack_push(Cell value)
+{
+    if (return_stack.sp >= STACK_SIZE - 1)
+    {
+        error("Return stack overflow");
+        return;
+    }
+    return_stack.stack[++return_stack.sp] = value;
+}
+
+Cell rstack_pop(void)
+{
+    if (return_stack.sp < 0)
+    {
+        error("Return stack underflow");
+        return 0;
+    }
+    return return_stack.stack[return_stack.sp--];
+}
+
+Cell rstack_peek(void)
+{
+    if (return_stack.sp < 0)
+    {
+        error("Return stack underflow");
+        return 0;
+    }
+    return return_stack.stack[return_stack.sp];
+}
+
+Cell rstack_peek_n(int n)
+{
+    if (return_stack.sp < n)
+    {
+        error("Return stack underflow");
+        return 0;
+    }
+    return return_stack.stack[return_stack.sp - n];
+}
+
 
 // Branch stack operations
 void branch_stack_push(int origin, ControlFlowType type)
@@ -371,23 +414,22 @@ void fetch(void)
 // Built-in CREATE word
 void create_word(void)
 {
-    // In a full implementation, this would read the next token
-    // For now, we'll create a simple variable word
-    // This is a placeholder implementation
-    int addr = next_mem_addr++;
+    char name[MAX_WORD_LEN];
+    if (!tokenize(name))
+    {
+        error("CREATE needs a name");
+        return;
+    }
+    int addr = next_mem_addr;
     Word *new_word = malloc(sizeof(Word));
-    // For simplicity, create a word named "var" + addr
-    char name[32];
-    sprintf(name, "var%d", addr);
     strcpy(new_word->name, name);
     new_word->func = NULL;
-    new_word->code = malloc(sizeof(Cell));
-    new_word->code[0] = addr; // Push address
-    new_word->code_size = 1;
+    new_word->code = malloc(2 * sizeof(Cell));
+    new_word->code[0] = OP_LIT;
+    new_word->code[1] = addr;
+    new_word->code_size = 2;
     new_word->next = NULL;
     dict_add(new_word);
-    // Push the address to stack for immediate use
-    stack_push(addr);
 }
 
 // Built-in VARIABLE word
@@ -471,6 +513,32 @@ void execute_word(Word *word)
                 i += offset - 1;
             }
         }
+ 		else if (item == OP_DO)
+        {
+            Cell start = stack_pop();
+            Cell limit = stack_pop();
+            rstack_push(limit);
+            rstack_push(start);
+        }
+        else if (item == OP_LOOP)
+        {
+            Cell index = rstack_pop();
+            Cell limit = rstack_peek();
+            index++;
+            if (index < limit)
+            {
+                rstack_push(index);
+                // Branch back
+                i++; // Skip OP_LIT
+                i++; // Skip to offset
+                Cell offset = word->code[i];
+                i += offset - 1;
+            }
+            else
+            {
+                rstack_pop(); // Pop limit
+            }
+        }
         else
         {
             // Check if it's a valid word pointer (word pointers are usually large addresses)
@@ -505,6 +573,37 @@ void dot(void)
 void dot_s(void)
 {
     print_stack();
+}
+
+void dot_quote(void)
+{
+    char str[MAX_LINE_LEN];
+    if (!parse_string(str)) {
+        error("Expected string after .\"");
+        return;
+    }
+    printf("%s", str);
+}
+void cells_word(void)
+{
+    Cell n = stack_pop();
+    stack_push(n * sizeof(Cell));
+}
+
+void allot_word(void)
+{
+    Cell n = stack_pop();
+    next_mem_addr += n;
+}
+
+void i_word(void)
+{
+    stack_push(rstack_peek());
+}
+
+void j_word(void)
+{
+    stack_push(rstack_peek_n(2));
 }
 
 // Control flow functions
@@ -608,7 +707,7 @@ void colon(void)
     // Read the next token as the word name
     if (!tokenize(word_name))
     {
-        error("Expected word name after :");
+        error("Expected word name after :\"");
         return;
     }
 
@@ -795,8 +894,7 @@ void do_word(void)
     {
         // Push current code position and DO type to branch stack
         branch_stack_push(code_sp, CF_DO);
-        // In a full implementation, we would compile code to set up the loop variables
-        // For now, this is a placeholder
+        code_buffer[code_sp++] = OP_DO;
     }
     else
     {
@@ -821,11 +919,9 @@ void loop_word(void)
             return;
         }
 
-        // In a full implementation, we would compile code to increment index and check limit
-        // For now, compile a simple branch back
-        code_buffer[code_sp++] = OP_BRANCH;
+        code_buffer[code_sp++] = OP_LOOP;
         code_buffer[code_sp++] = OP_LIT;
-        code_buffer[code_sp++] = (entry.origin - code_sp);
+        code_buffer[code_sp++] = (entry.origin + 1 - code_sp);
     }
     else
     {
@@ -1088,6 +1184,49 @@ void forth_init(void)
     w_dot->immediate = 0;
     w_dot->next = NULL;
     dict_add(w_dot);
+    Word *w_dot_quote = malloc(sizeof(Word));
+    strcpy(w_dot_quote->name, ".\"");
+    w_dot_quote->func = dot_quote;
+    w_dot_quote->code = NULL;
+    w_dot_quote->code_size = 0;
+    w_dot_quote->immediate = 1;
+    w_dot_quote->next = NULL;
+    dict_add(w_dot_quote);
+    Word *w_cells = malloc(sizeof(Word));
+    strcpy(w_cells->name, "cells");
+    w_cells->func = cells_word;
+    w_cells->code = NULL;
+    w_cells->code_size = 0;
+    w_cells->immediate = 0;
+    w_cells->next = NULL;
+    dict_add(w_cells);
+
+    Word *w_allot = malloc(sizeof(Word));
+    strcpy(w_allot->name, "allot");
+    w_allot->func = allot_word;
+    w_allot->code = NULL;
+    w_allot->code_size = 0;
+    w_allot->immediate = 0;
+    w_allot->next = NULL;
+    dict_add(w_allot);
+
+    Word *w_i = malloc(sizeof(Word));
+    strcpy(w_i->name, "i");
+    w_i->func = i_word;
+    w_i->code = NULL;
+    w_i->code_size = 0;
+    w_i->immediate = 0;
+    w_i->next = NULL;
+    dict_add(w_i);
+
+    Word *w_j = malloc(sizeof(Word));
+    strcpy(w_j->name, "j");
+    w_j->func = j_word;
+    w_j->code = NULL;
+    w_j->code_size = 0;
+    w_j->immediate = 0;
+    w_j->next = NULL;
+    dict_add(w_j);
 
     Word *w_dot_s = malloc(sizeof(Word));
     strcpy(w_dot_s->name, ".s");
@@ -1227,6 +1366,13 @@ char *tokenize(char *token)
         return NULL;
 
     char *start = input_pos;
+    if (strncmp(start, ".\"", 2) == 0) {
+        input_pos += 2;
+        strncpy(token, start, 2);
+        token[2] = '\0';
+        return input_pos;
+    }
+
     while (*input_pos && !isspace(*input_pos))
         input_pos++;
     if (*input_pos)
@@ -1235,6 +1381,21 @@ char *tokenize(char *token)
     strncpy(token, start, MAX_WORD_LEN - 1);
     token[MAX_WORD_LEN - 1] = '\0';
     return input_pos;
+}
+char *parse_string(char *str)
+{
+    // Skip whitespace
+    while (*input_pos && isspace(*input_pos))
+        input_pos++;
+    char *start = input_pos;
+    while (*input_pos && *input_pos != '"')
+        input_pos++;
+    if (*input_pos == '"') {
+        *input_pos++ = '\0';
+        strcpy(str, start);
+        return str;
+    }
+    return NULL;
 }
 
 // Main interpreter loop (REPL)
@@ -1254,8 +1415,8 @@ void repl(void)
         input_pos = line;
         while (tokenize(token) != NULL)
         {
-            if (state == 1)
-            { // Compile mode
+            if (state == 1) // Compile mode
+            {
                 Word *word = dict_find(token);
                 if (word)
                 {

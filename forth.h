@@ -82,6 +82,9 @@ extern BranchStack branch_stack;
 #define OP_BRANCH -2
 #define OP_0BRANCH -3
 #define OP_LIT -1
+#define OP_DO -4
+#define OP_LOOP -5
+#define OP_J -6
 
 // Control flow words
 void if_word(void);
@@ -92,6 +95,11 @@ void until_word(void);
 void while_word(void);
 void repeat_word(void);
 void end_word(void);
+void do_word(void);
+void loop_word(void);
+void i_word(void);
+void j_word(void);
+
 
 // Stack operations
 void stack_push(Cell value);
