@@ -1,26 +1,31 @@
 #include "forth.h"
 
-// Global structures
-Stack data_stack = {{0}, -1};
-Stack return_stack = {{0}, -1};
-Dictionary dict = {{NULL}, 0};
-Cell memory[STACK_SIZE] = {0};
-Cell code_buffer[STACK_SIZE] = {0};
-int base = 10;
-int state = 0;             // 0: interpreting, 1: compiling
-int code_sp = 0;           // Code stack pointer
-Word *current_word = NULL; // Current word being compiled
-int next_mem_addr = 0;     // Next available memory address
+// Global structures - Core data structures for the Forth interpreter
+Stack data_stack = {{0}, -1};        // Main data stack for computation
+Stack return_stack = {{0}, -1};      // Return stack for control flow and loops
+Dictionary dict = {{NULL}, 0};       // Dictionary containing all defined words
+Cell memory[STACK_SIZE] = {0};       // Linear memory space for variables and data
+Cell code_buffer[STACK_SIZE] = {0};  // Temporary buffer for compiling user-defined words
+int base = 10;                       // Number base for input/output (default decimal)
+int state = 0;                       // Interpreter state: 0=interpreting, 1=compiling
+int code_sp = 0;                     // Code buffer stack pointer during compilation
+Word *current_word = NULL;           // Pointer to word currently being compiled
+int next_mem_addr = 0;               // Next available address in memory array
 
-// Input handling
-char *current_input = NULL;
-char *input_pos = NULL;
+// Input handling - Variables for parsing input text
+char *current_input = NULL;          // Current input line being processed
+char *input_pos = NULL;              // Current position in input string during tokenization
 
-// Control flow
-BranchStack branch_stack = {{{0, CF_END}}, -1};
-char *parse_string(char *str);
+// Control flow - Stack for managing compilation of control structures
+BranchStack branch_stack = {{{0, CF_END}}, -1}; // Stack for tracking branch points in control flow
+char *parse_string(char *str);       // Forward declaration for string parsing function
 
-// Stack operations
+// Stack operations - Core functions for manipulating the data stack
+
+/**
+ * Push a value onto the data stack
+ * @param value The cell value to push onto the stack
+ */
 void stack_push(Cell value)
 {
     if (data_stack.sp >= STACK_SIZE - 1)
@@ -31,6 +36,10 @@ void stack_push(Cell value)
     data_stack.stack[++data_stack.sp] = value;
 }
 
+/**
+ * Pop a value from the data stack
+ * @return The top value from the stack, or 0 on underflow
+ */
 Cell stack_pop(void)
 {
     if (data_stack.sp < 0)
@@ -41,6 +50,10 @@ Cell stack_pop(void)
     return data_stack.stack[data_stack.sp--];
 }
 
+/**
+ * Peek at the top value on the data stack without removing it
+ * @return The top value from the stack, or 0 on underflow
+ */
 Cell stack_peek(void)
 {
     if (data_stack.sp < 0)
@@ -51,17 +64,30 @@ Cell stack_peek(void)
     return data_stack.stack[data_stack.sp];
 }
 
+/**
+ * Check if the data stack is empty
+ * @return 1 if empty, 0 otherwise
+ */
 int stack_empty(void)
 {
     return data_stack.sp < 0;
 }
 
+/**
+ * Check if the data stack is full
+ * @return 1 if full, 0 otherwise
+ */
 int stack_full(void)
 {
     return data_stack.sp >= STACK_SIZE - 1;
 }
 
-// Return stack operations
+// Return stack operations - Functions for manipulating the return stack (used for loops and control flow)
+
+/**
+ * Push a value onto the return stack
+ * @param value The cell value to push onto the return stack
+ */
 void rstack_push(Cell value)
 {
     if (return_stack.sp >= STACK_SIZE - 1)
@@ -72,6 +98,10 @@ void rstack_push(Cell value)
     return_stack.stack[++return_stack.sp] = value;
 }
 
+/**
+ * Pop a value from the return stack
+ * @return The top value from the return stack, or 0 on underflow
+ */
 Cell rstack_pop(void)
 {
     if (return_stack.sp < 0)
@@ -82,6 +112,10 @@ Cell rstack_pop(void)
     return return_stack.stack[return_stack.sp--];
 }
 
+/**
+ * Peek at the top value on the return stack without removing it
+ * @return The top value from the return stack, or 0 on underflow
+ */
 Cell rstack_peek(void)
 {
     if (return_stack.sp < 0)
@@ -92,6 +126,11 @@ Cell rstack_peek(void)
     return return_stack.stack[return_stack.sp];
 }
 
+/**
+ * Peek at a value n positions down from the top of the return stack
+ * @param n Number of positions down from the top (0 = top, 1 = one below top, etc.)
+ * @return The value at the specified position, or 0 on underflow
+ */
 Cell rstack_peek_n(int n)
 {
     if (return_stack.sp < n)
@@ -103,7 +142,13 @@ Cell rstack_peek_n(int n)
 }
 
 
-// Branch stack operations
+// Branch stack operations - Stack for tracking control flow constructs during compilation
+
+/**
+ * Push a branch entry onto the branch stack
+ * @param origin The code position where this branch construct begins
+ * @param type The type of control flow construct (IF, BEGIN, etc.)
+ */
 void branch_stack_push(int origin, ControlFlowType type)
 {
     if (branch_stack.top >= STACK_SIZE - 1)
@@ -116,6 +161,10 @@ void branch_stack_push(int origin, ControlFlowType type)
     branch_stack.entries[branch_stack.top].type = type;
 }
 
+/**
+ * Pop a branch entry from the branch stack
+ * @return The branch entry, or empty entry on underflow
+ */
 BranchEntry branch_stack_pop(void)
 {
     if (branch_stack.top < 0)
@@ -129,6 +178,10 @@ BranchEntry branch_stack_pop(void)
     return entry;
 }
 
+/**
+ * Peek at the top branch entry without removing it
+ * @return The top branch entry, or empty entry on underflow
+ */
 BranchEntry branch_stack_peek(void)
 {
     if (branch_stack.top < 0)
@@ -140,12 +193,21 @@ BranchEntry branch_stack_peek(void)
     return branch_stack.entries[branch_stack.top];
 }
 
+/**
+ * Check if the branch stack is empty
+ * @return 1 if empty, 0 otherwise
+ */
 int branch_stack_empty(void)
 {
     return branch_stack.top < 0;
 }
 
-// Dictionary operations
+// Dictionary operations - Functions for managing the word dictionary
+
+/**
+ * Initialize the dictionary structure
+ * Sets up the dictionary with zero count and clears all word pointers
+ */
 void dict_init(void)
 {
     dict.count = 0;
@@ -153,6 +215,11 @@ void dict_init(void)
     memset(dict.words, 0, sizeof(dict.words));
 }
 
+/**
+ * Search for a word in the dictionary by name
+ * @param name The word name to search for
+ * @return Pointer to the word if found, NULL otherwise
+ */
 Word *dict_find(const char *name)
 {
     // Simple linear search for now; optimize with hash later
@@ -166,6 +233,10 @@ Word *dict_find(const char *name)
     return NULL;
 }
 
+/**
+ * Add a new word to the dictionary
+ * @param word Pointer to the word structure to add
+ */
 void dict_add(Word *word)
 {
     if (dict.count >= DICT_SIZE)
@@ -176,20 +247,32 @@ void dict_add(Word *word)
     dict.words[dict.count++] = word;
 }
 
-// Basic error handling
+// Basic error handling - Non-fatal error recovery mechanism
+
+/**
+ * Handle errors by printing message and resetting interpreter state
+ * This allows the interpreter to continue running after errors rather than exiting
+ * @param msg The error message to display
+ */
 void error(const char *msg)
 {
     fprintf(stderr, "Error: %s\n", msg);
     // Reset stacks and state to continue execution
-    data_stack.sp = -1;
-    return_stack.sp = -1;
-    branch_stack.top = -1;
-    state = 0; // Back to interpret mode
-    code_sp = 0;
-    current_word = NULL;
+    data_stack.sp = -1;        // Clear data stack
+    return_stack.sp = -1;      // Clear return stack
+    branch_stack.top = -1;     // Clear branch stack
+    state = 0;                 // Back to interpret mode
+    code_sp = 0;               // Reset code buffer pointer
+    current_word = NULL;       // Clear current word being compiled
 }
 
-// Memory operations
+// Memory operations - Functions for accessing the linear memory array
+
+/**
+ * Store a value in memory at the specified address
+ * @param addr The memory address to write to
+ * @param value The value to store
+ */
 void mem_store(int addr, Cell value)
 {
     if (addr < 0 || addr >= STACK_SIZE)
@@ -200,6 +283,11 @@ void mem_store(int addr, Cell value)
     memory[addr] = value;
 }
 
+/**
+ * Fetch a value from memory at the specified address
+ * @param addr The memory address to read from
+ * @return The value at the address, or 0 on invalid address
+ */
 Cell mem_fetch(int addr)
 {
     if (addr < 0 || addr >= STACK_SIZE)
@@ -210,12 +298,21 @@ Cell mem_fetch(int addr)
     return memory[addr];
 }
 
-// I/O operations
+// I/O operations - Functions for input/output and debugging
+
+/**
+ * Print a cell value to stdout followed by a space
+ * @param value The cell value to print
+ */
 void print_cell(Cell value)
 {
     printf("%lld ", value);
 }
 
+/**
+ * Print the entire data stack contents in Forth notation
+ * Format: < val1 val2 val3 ... > with space after >
+ */
 void print_stack(void)
 {
     printf("< ");
@@ -226,12 +323,20 @@ void print_stack(void)
     printf("> ");
 }
 
+/**
+ * Print a carriage return (newline) to stdout
+ */
 void cr(void)
 {
     printf("\n");
 }
 
-// Built-in arithmetic operations
+// Built-in arithmetic operations - Basic math functions that pop two values and push result
+
+/**
+ * Addition: (a b -- a+b)
+ * Pops two values from stack and pushes their sum
+ */
 void plus(void)
 {
     Cell b = stack_pop();
@@ -239,6 +344,10 @@ void plus(void)
     stack_push(a + b);
 }
 
+/**
+ * Subtraction: (a b -- a-b)
+ * Pops two values and pushes a minus b
+ */
 void minus(void)
 {
     Cell b = stack_pop();
@@ -246,6 +355,10 @@ void minus(void)
     stack_push(a - b);
 }
 
+/**
+ * Multiplication: (a b -- a*b)
+ * Pops two values and pushes their product
+ */
 void star(void)
 {
     Cell b = stack_pop();
@@ -253,6 +366,11 @@ void star(void)
     stack_push(a * b);
 }
 
+/**
+ * Division: (a b -- a/b)
+ * Pops two values and pushes a divided by b
+ * Handles division by zero error
+ */
 void slash(void)
 {
     Cell b = stack_pop();
@@ -265,6 +383,11 @@ void slash(void)
     stack_push(a / b);
 }
 
+/**
+ * Modulo: (a b -- a%b)
+ * Pops two values and pushes a modulo b
+ * Handles modulo by zero error
+ */
 void mod(void)
 {
     Cell b = stack_pop();
@@ -277,18 +400,31 @@ void mod(void)
     stack_push(a % b);
 }
 
-// Built-in stack operations
+// Built-in stack operations - Functions for manipulating stack contents
+
+/**
+ * DUP: (a -- a a)
+ * Duplicate the top stack item
+ */
 void dup(void)
 {
     Cell top = stack_peek();
     stack_push(top);
 }
 
+/**
+ * DROP: (a -- )
+ * Remove the top stack item
+ */
 void drop(void)
 {
     stack_pop();
 }
 
+/**
+ * SWAP: (a b -- b a)
+ * Exchange the top two stack items
+ */
 void swap(void)
 {
     Cell b = stack_pop();
@@ -297,6 +433,10 @@ void swap(void)
     stack_push(a);
 }
 
+/**
+ * OVER: (a b -- a b a)
+ * Copy the second item to the top
+ */
 void over(void)
 {
     Cell b = stack_pop();
@@ -306,6 +446,10 @@ void over(void)
     stack_push(a);
 }
 
+/**
+ * ROT: (a b c -- b c a)
+ * Rotate the top three items
+ */
 void rot(void)
 {
     Cell c = stack_pop();
@@ -316,6 +460,10 @@ void rot(void)
     stack_push(a);
 }
 
+/**
+ * NIP: (a b -- b)
+ * Remove the second item from the stack
+ */
 void nip(void)
 {
     Cell b = stack_pop();
@@ -323,6 +471,10 @@ void nip(void)
     stack_push(b);
 }
 
+/**
+ * TUCK: (a b -- b a b)
+ * Copy the top item below the second item
+ */
 void tuck(void)
 {
     Cell b = stack_pop();
@@ -332,7 +484,12 @@ void tuck(void)
     stack_push(b);
 }
 
-// Built-in comparison operations
+// Built-in comparison operations - Functions that compare two values and push boolean result
+
+/**
+ * = : (a b -- flag)
+ * Push -1 if a equals b, 0 otherwise
+ */
 void equal(void)
 {
     Cell b = stack_pop();
@@ -340,6 +497,10 @@ void equal(void)
     stack_push(a == b ? -1 : 0);
 }
 
+/**
+ * < : (a b -- flag)
+ * Push -1 if a is less than b, 0 otherwise
+ */
 void less_than(void)
 {
     Cell b = stack_pop();
@@ -347,6 +508,10 @@ void less_than(void)
     stack_push(a < b ? -1 : 0);
 }
 
+/**
+ * > : (a b -- flag)
+ * Push -1 if a is greater than b, 0 otherwise
+ */
 void greater_than(void)
 {
     Cell b = stack_pop();
@@ -354,6 +519,10 @@ void greater_than(void)
     stack_push(a > b ? -1 : 0);
 }
 
+/**
+ * <= : (a b -- flag)
+ * Push -1 if a is less than or equal to b, 0 otherwise
+ */
 void less_equal(void)
 {
     Cell b = stack_pop();
@@ -361,6 +530,10 @@ void less_equal(void)
     stack_push(a <= b ? -1 : 0);
 }
 
+/**
+ * >= : (a b -- flag)
+ * Push -1 if a is greater than or equal to b, 0 otherwise
+ */
 void greater_equal(void)
 {
     Cell b = stack_pop();
@@ -368,6 +541,10 @@ void greater_equal(void)
     stack_push(a >= b ? -1 : 0);
 }
 
+/**
+ * <> : (a b -- flag)
+ * Push -1 if a is not equal to b, 0 otherwise
+ */
 void not_equal(void)
 {
     Cell b = stack_pop();
@@ -375,7 +552,12 @@ void not_equal(void)
     stack_push(a != b ? -1 : 0);
 }
 
-// Built-in logical operations
+// Built-in logical operations - Bitwise logical operations
+
+/**
+ * AND: (a b -- a&b)
+ * Push bitwise AND of a and b
+ */
 void and_op(void)
 {
     Cell b = stack_pop();
@@ -383,6 +565,10 @@ void and_op(void)
     stack_push(a & b);
 }
 
+/**
+ * OR: (a b -- a|b)
+ * Push bitwise OR of a and b
+ */
 void or_op(void)
 {
     Cell b = stack_pop();
@@ -390,13 +576,22 @@ void or_op(void)
     stack_push(a | b);
 }
 
+/**
+ * NOT: (a -- ~a)
+ * Push bitwise NOT of a (one's complement)
+ */
 void not_op(void)
 {
     Cell a = stack_pop();
     stack_push(~a);
 }
 
-// Built-in memory operations
+// Built-in memory operations - Functions for storing and fetching from memory
+
+/**
+ * ! (store): (value addr -- )
+ * Store value at memory address addr
+ */
 void store(void)
 {
     Cell addr = stack_pop();
@@ -404,6 +599,10 @@ void store(void)
     mem_store(addr, value);
 }
 
+/**
+ * @ (fetch): (addr -- value)
+ * Fetch value from memory address addr
+ */
 void fetch(void)
 {
     Cell addr = stack_pop();
@@ -411,7 +610,12 @@ void fetch(void)
     stack_push(value);
 }
 
-// Built-in CREATE word
+// Built-in CREATE word - Creates a word that pushes a memory address onto the stack
+
+/**
+ * CREATE: Parse next token as name and create a word that pushes its memory address
+ * The created word can be used as a base for defining expandable words
+ */
 void create_word(void)
 {
     char name[MAX_WORD_LEN];
@@ -420,19 +624,24 @@ void create_word(void)
         error("CREATE needs a name");
         return;
     }
-    int addr = next_mem_addr;
+    int addr = next_mem_addr;  // Get current memory address (don't increment)
     Word *new_word = malloc(sizeof(Word));
     strcpy(new_word->name, name);
     new_word->func = NULL;
     new_word->code = malloc(2 * sizeof(Cell));
-    new_word->code[0] = OP_LIT;
-    new_word->code[1] = addr;
+    new_word->code[0] = OP_LIT;     // Literal opcode
+    new_word->code[1] = addr;       // The memory address
     new_word->code_size = 2;
     new_word->next = NULL;
     dict_add(new_word);
 }
 
-// Built-in VARIABLE word
+// Built-in VARIABLE word - Creates a named variable that pushes its address
+
+/**
+ * VARIABLE: Parse next token as name and create a variable at the next memory location
+ * When executed, pushes the variable's memory address onto the stack
+ */
 void variable_word(void)
 {
     char name[MAX_WORD_LEN];
@@ -441,19 +650,24 @@ void variable_word(void)
         error("VARIABLE needs a name");
         return;
     }
-    int addr = next_mem_addr++;
+    int addr = next_mem_addr++;  // Allocate new memory location
     Word *new_word = malloc(sizeof(Word));
     strcpy(new_word->name, name);
     new_word->func = NULL;
     new_word->code = malloc(2 * sizeof(Cell));
-    new_word->code[0] = OP_LIT;
-    new_word->code[1] = addr;
+    new_word->code[0] = OP_LIT;     // Literal opcode
+    new_word->code[1] = addr;       // The variable's memory address
     new_word->code_size = 2;
     new_word->next = NULL;
     dict_add(new_word);
 }
 
-// Built-in CONSTANT word
+// Built-in CONSTANT word - Creates a named constant with a fixed value
+
+/**
+ * CONSTANT: Pop value from stack and create a word that pushes that value
+ * The constant value is stored in the word's code and cannot be changed
+ */
 void constant_word(void)
 {
     char name[MAX_WORD_LEN];
@@ -462,92 +676,107 @@ void constant_word(void)
         error("CONSTANT needs a name");
         return;
     }
-    Cell value = stack_pop();
+    Cell value = stack_pop();  // Get the constant value from stack
     Word *new_word = malloc(sizeof(Word));
     strcpy(new_word->name, name);
     new_word->func = NULL;
     new_word->code = malloc(2 * sizeof(Cell));
-    new_word->code[0] = OP_LIT;
-    new_word->code[1] = value;
+    new_word->code[0] = OP_LIT;     // Literal opcode
+    new_word->code[1] = value;      // The constant value
     new_word->code_size = 2;
     new_word->next = NULL;
     dict_add(new_word);
 }
 
-// Execute user-defined word
+// Execute user-defined word - Core function for threaded code interpretation
+
+/**
+ * Execute a word, either as a built-in function or as threaded code
+ * This implements the heart of the Forth interpreter's execution model
+ * @param word The word to execute
+ */
 void execute_word(Word *word)
 {
+    // If it's a built-in word, call its function directly
     if (word->func)
     {
         word->func();
         return;
     }
 
-    // Execute code for user-defined word
+    // Execute threaded code for user-defined words
+    // Each item in code[] is either an opcode, literal value, or word pointer
     for (int i = 0; i < word->code_size; i++)
     {
         Cell item = word->code[i];
+
+        // Handle literal values (push next item onto stack)
         if (item == OP_LIT)
         {
-            // Next item is literal value
-            i++;
+            i++; // Move to the literal value
             stack_push(word->code[i]);
         }
+        // Handle unconditional branch (OP_BRANCH offset)
         else if (item == OP_BRANCH)
         {
-            // Unconditional branch
-            i++; // Skip OP_LIT
-            i++; // Skip to offset
+            i++; // Skip OP_LIT marker
+            i++; // Skip to the offset value
             Cell offset = word->code[i];
-            i += offset - 1; // -1 because loop will increment
+            i += offset - 1; // Jump to target (-1 because loop will increment)
         }
+        // Handle conditional branch (OP_0BRANCH offset)
         else if (item == OP_0BRANCH)
         {
-            // Conditional branch
-            i++; // Skip OP_LIT
-            i++; // Skip to offset
+            i++; // Skip OP_LIT marker
+            i++; // Skip to the offset value
             Cell offset = word->code[i];
-            Cell top = stack_pop();
-            if (top == 0)
+            Cell top = stack_pop(); // Pop condition flag
+            if (top == 0) // If false (0), take the branch
             {
-                i += offset - 1;
+                i += offset - 1; // Jump to target
             }
         }
- 		else if (item == OP_DO)
+        // Handle DO loop setup (limit start -- )
+        else if (item == OP_DO)
         {
-            Cell start = stack_pop();
-            Cell limit = stack_pop();
-            rstack_push(limit);
-            rstack_push(start);
+            Cell start = stack_pop(); // Starting index
+            Cell limit = stack_pop(); // Loop limit
+            rstack_push(limit);       // Push limit to return stack
+            rstack_push(start);       // Push start index to return stack
         }
+        // Handle LOOP increment and test
         else if (item == OP_LOOP)
         {
-            Cell index = rstack_pop();
-            Cell limit = rstack_peek();
-            index++;
-            if (index < limit)
+            Cell index = rstack_pop();  // Get current index
+            Cell limit = rstack_peek(); // Peek at limit (don't remove yet)
+            index++; // Increment index
+
+            if (index < limit) // Continue looping?
             {
-                rstack_push(index);
-                // Branch back
-                i++; // Skip OP_LIT
-                i++; // Skip to offset
+                rstack_push(index); // Push updated index back
+                // Branch back to loop start
+                i++; // Skip OP_LIT marker
+                i++; // Skip to the offset value
                 Cell offset = word->code[i];
-                i += offset - 1;
+                i += offset - 1; // Jump back
             }
             else
             {
-                rstack_pop(); // Pop limit
+                rstack_pop(); // Remove limit from return stack
+                // Loop ends, continue to next instruction
             }
         }
         else
         {
-            // Check if it's a valid word pointer (word pointers are usually large addresses)
-            if (item > 1000 && item < 10000000000000000LL) // Reasonable range for pointers
+            // Check if item is a word pointer (large address values)
+            // Word pointers are typically large memory addresses
+            if (item > 1000 && item < 10000000000000000LL)
             {
                 Word *w = (Word *)item;
-                if (w && w->name && w->name[0] != '\0') // Basic validation
+                // Basic validation of word pointer
+                if (w && w->name && w->name[0] != '\0')
                 {
-                    execute_word(w);
+                    execute_word(w); // Recursively execute the referenced word
                 }
                 else
                 {
@@ -556,7 +785,7 @@ void execute_word(Word *word)
             }
             else
             {
-                // It's a small number, treat it as a literal
+                // Small numbers are treated as literal values
                 stack_push(item);
             }
         }
@@ -606,19 +835,21 @@ void j_word(void)
     stack_push(rstack_peek_n(2));
 }
 
-// Control flow functions
+// Control flow functions - Words for implementing conditional and looping constructs
+
+/**
+ * IF: Compile conditional branch for if-then-else structure
+ * Compiles: OP_0BRANCH OP_LIT 0 (placeholder for offset)
+ * Pushes IF entry to branch stack for later resolution by THEN/ELSE
+ */
 void if_word(void)
 {
-    // In compile mode, compile a conditional branch
-    if (state)
+    if (state) // Only works in compile mode
     {
-        // Push current code position and IF type to branch stack
-        branch_stack_push(code_sp, CF_IF);
-        // Compile 0BRANCH opcode (conditional branch)
-        code_buffer[code_sp++] = OP_0BRANCH;
-        // Reserve space for branch offset as literal (will be filled in by THEN/ELSE)
-        code_buffer[code_sp++] = OP_LIT;
-        code_buffer[code_sp++] = 0;
+        branch_stack_push(code_sp, CF_IF); // Track this IF for matching THEN/ELSE
+        code_buffer[code_sp++] = OP_0BRANCH; // Conditional branch opcode
+        code_buffer[code_sp++] = OP_LIT;     // Literal marker
+        code_buffer[code_sp++] = 0;          // Placeholder for branch offset
     }
     else
     {
@@ -626,9 +857,13 @@ void if_word(void)
     }
 }
 
+/**
+ * THEN: Complete IF or ELSE branch by filling in the jump offset
+ * Calculates offset from IF/ELSE origin to current position and stores it
+ */
 void then_word(void)
 {
-    if (state)
+    if (state) // Only works in compile mode
     {
         if (branch_stack_empty())
         {
@@ -643,7 +878,7 @@ void then_word(void)
             return;
         }
 
-        // Fill in the branch offset
+        // Calculate and store the branch offset
         Cell offset = code_sp - (entry.origin + 2);
         code_buffer[entry.origin + 2] = offset;
     }
@@ -653,9 +888,13 @@ void then_word(void)
     }
 }
 
+/**
+ * ELSE: Handle the else part of if-then-else structure
+ * Completes the IF branch to jump over ELSE, then starts ELSE branch
+ */
 void else_word(void)
 {
-    if (state)
+    if (state) // Only works in compile mode
     {
         if (branch_stack_empty())
         {
@@ -670,20 +909,17 @@ void else_word(void)
             return;
         }
 
-        // First, complete the IF branch to jump over the ELSE part
-        // Compile unconditional branch
+        // Compile jump from end of IF to skip over ELSE part
         int else_branch_origin = code_sp;
-        code_buffer[code_sp++] = OP_BRANCH;
-        // Reserve space for branch offset as literal (will be filled in by THEN)
-        code_buffer[code_sp++] = OP_LIT;
-        code_buffer[code_sp++] = 0;
+        code_buffer[code_sp++] = OP_BRANCH; // Unconditional branch
+        code_buffer[code_sp++] = OP_LIT;    // Literal marker
+        code_buffer[code_sp++] = 0;         // Placeholder for offset
 
-        // Fix up the IF branch to point to here
-        // Target is code_sp + 3 (after ELSE branch compilation)
+        // Fix the IF branch to jump to start of ELSE
         Cell if_offset = (code_sp + 3) - (entry.origin + 2);
         code_buffer[entry.origin + 2] = if_offset;
 
-        // Pop the IF entry and push the ELSE entry
+        // Replace IF entry with ELSE entry on branch stack
         branch_stack_pop();
         branch_stack_push(else_branch_origin, CF_ELSE);
     }
@@ -693,6 +929,10 @@ void else_word(void)
     }
 }
 
+/**
+ * END: Placeholder for ending definitions (currently unused)
+ * This word is defined but not actively used since ; (semicolon) handles definition ending
+ */
 void end_word(void)
 {
     // This would be used to end definitions, but we already have semicolon()
@@ -771,12 +1011,15 @@ void semicolon(void)
     code_sp = 0;
 }
 
+/**
+ * BEGIN: Mark the start of a loop construct
+ * Pushes current position to branch stack for UNTIL/WHILE to reference
+ */
 void begin_word(void)
 {
-    if (state)
+    if (state) // Only works in compile mode
     {
-        // Push current code position and BEGIN type to branch stack
-        branch_stack_push(code_sp, CF_BEGIN);
+        branch_stack_push(code_sp, CF_BEGIN); // Mark loop start position
     }
     else
     {
@@ -784,9 +1027,13 @@ void begin_word(void)
     }
 }
 
+/**
+ * UNTIL: End a begin-until loop with conditional test
+ * Compiles conditional branch back to BEGIN if top of stack is false (0)
+ */
 void until_word(void)
 {
-    if (state)
+    if (state) // Only works in compile mode
     {
         if (branch_stack_empty())
         {
@@ -802,9 +1049,9 @@ void until_word(void)
         }
 
         // Compile conditional branch back to BEGIN
-        code_buffer[code_sp++] = OP_0BRANCH;
-        // Branch offset is negative to go backward (store as literal)
-        code_buffer[code_sp++] = OP_LIT;
+        code_buffer[code_sp++] = OP_0BRANCH; // Branch if false
+        code_buffer[code_sp++] = OP_LIT;     // Literal marker
+        // Negative offset to branch backward to BEGIN
         code_buffer[code_sp++] = (entry.origin - code_sp);
     }
     else
@@ -813,9 +1060,13 @@ void until_word(void)
     }
 }
 
+/**
+ * WHILE: Conditional test within begin-while-repeat loop
+ * Compiles conditional branch to exit loop if condition is false
+ */
 void while_word(void)
 {
-    if (state)
+    if (state) // Only works in compile mode
     {
         if (branch_stack_empty())
         {
@@ -830,12 +1081,11 @@ void while_word(void)
             return;
         }
 
-        // Compile conditional branch to exit loop (like IF)
+        // Compile conditional exit branch (like IF)
         branch_stack_push(code_sp, CF_WHILE);
-        code_buffer[code_sp++] = OP_0BRANCH;
-        // Reserve space for branch offset as literal (will be filled in by REPEAT)
-        code_buffer[code_sp++] = OP_LIT;
-        code_buffer[code_sp++] = 0;
+        code_buffer[code_sp++] = OP_0BRANCH; // Branch if false
+        code_buffer[code_sp++] = OP_LIT;     // Literal marker
+        code_buffer[code_sp++] = 0;          // Placeholder for exit offset
     }
     else
     {
@@ -843,9 +1093,13 @@ void while_word(void)
     }
 }
 
+/**
+ * REPEAT: Complete begin-while-repeat loop structure
+ * Compiles unconditional branch back to BEGIN and fixes WHILE exit offset
+ */
 void repeat_word(void)
 {
-    if (state)
+    if (state) // Only works in compile mode
     {
         if (branch_stack_empty())
         {
@@ -874,12 +1128,12 @@ void repeat_word(void)
         }
 
         // Compile unconditional branch back to BEGIN
-        code_buffer[code_sp++] = OP_BRANCH;
-        // Branch offset is negative to go backward (store as literal)
-        code_buffer[code_sp++] = OP_LIT;
+        code_buffer[code_sp++] = OP_BRANCH; // Always branch
+        code_buffer[code_sp++] = OP_LIT;    // Literal marker
+        // Negative offset to branch backward to BEGIN
         code_buffer[code_sp++] = (begin_entry.origin - code_sp);
 
-        // Fix up the WHILE branch to point to after the loop
+        // Fix WHILE branch to exit to current position (after loop)
         code_buffer[while_entry.origin + 2] = code_sp - (while_entry.origin + 2);
     }
     else
@@ -888,13 +1142,16 @@ void repeat_word(void)
     }
 }
 
+/**
+ * DO: Start a counted loop (limit start -- )
+ * Pops start and limit from stack, pushes them to return stack for LOOP
+ */
 void do_word(void)
 {
-    if (state)
+    if (state) // Only works in compile mode
     {
-        // Push current code position and DO type to branch stack
-        branch_stack_push(code_sp, CF_DO);
-        code_buffer[code_sp++] = OP_DO;
+        branch_stack_push(code_sp, CF_DO); // Track loop start
+        code_buffer[code_sp++] = OP_DO;    // Compile DO opcode
     }
     else
     {
@@ -902,9 +1159,13 @@ void do_word(void)
     }
 }
 
+/**
+ * LOOP: End a DO loop, increment index and test against limit
+ * Compiles LOOP opcode with backward branch offset to DO position
+ */
 void loop_word(void)
 {
-    if (state)
+    if (state) // Only works in compile mode
     {
         if (branch_stack_empty())
         {
@@ -919,8 +1180,9 @@ void loop_word(void)
             return;
         }
 
-        code_buffer[code_sp++] = OP_LOOP;
-        code_buffer[code_sp++] = OP_LIT;
+        code_buffer[code_sp++] = OP_LOOP; // Compile LOOP opcode
+        code_buffer[code_sp++] = OP_LIT;  // Literal marker
+        // Backward offset to branch to instruction after DO
         code_buffer[code_sp++] = (entry.origin + 1 - code_sp);
     }
     else
@@ -929,19 +1191,20 @@ void loop_word(void)
     }
 }
 
-// Initialize the interpreter
+// Initialize the interpreter - Set up all core data structures and built-in words
 void forth_init(void)
 {
+    // Initialize core data structures
     dict_init();
-    data_stack.sp = -1;
-    return_stack.sp = -1;
-    branch_stack.top = -1;
-    code_sp = 0;
-    current_word = NULL;
-    base = 10;
-    state = 0;
+    data_stack.sp = -1;        // Empty data stack
+    return_stack.sp = -1;      // Empty return stack
+    branch_stack.top = -1;     // Empty branch stack
+    code_sp = 0;               // Reset code buffer pointer
+    current_word = NULL;       // No word being compiled
+    base = 10;                 // Default to decimal number base
+    state = 0;                 // Start in interpret mode
 
-    // Add built-in words
+    // Add all built-in words to the dictionary
     Word *w_plus = malloc(sizeof(Word));
     strcpy(w_plus->name, "+");
     w_plus->func = plus;
@@ -1356,16 +1619,23 @@ void forth_init(void)
     dict_add(w_semicolon);
 }
 
-// Simple tokenizer (basic implementation)
+// Simple tokenizer - Parse input text into individual words and tokens
+/**
+ * Extract the next token from input stream
+ * @param token Buffer to store the extracted token
+ * @return Pointer to next position in input, or NULL if no more tokens
+ */
 char *tokenize(char *token)
 {
-    // Skip whitespace
+    // Skip leading whitespace
     while (*input_pos && isspace(*input_pos))
         input_pos++;
-    if (!*input_pos)
+    if (!*input_pos)  // End of input
         return NULL;
 
     char *start = input_pos;
+
+    // Special handling for .\" (dot-quote) word
     if (strncmp(start, ".\"", 2) == 0) {
         input_pos += 2;
         strncpy(token, start, 2);
@@ -1373,65 +1643,82 @@ char *tokenize(char *token)
         return input_pos;
     }
 
+    // Find end of token (whitespace or end of input)
     while (*input_pos && !isspace(*input_pos))
         input_pos++;
     if (*input_pos)
-        *input_pos++ = '\0';
+        *input_pos++ = '\0';  // Null-terminate token and advance
 
+    // Copy token to output buffer with length limit
     strncpy(token, start, MAX_WORD_LEN - 1);
     token[MAX_WORD_LEN - 1] = '\0';
     return input_pos;
 }
+
+/**
+ * Parse a quoted string from input stream
+ * @param str Buffer to store the parsed string
+ * @return Pointer to parsed string, or NULL if parsing failed
+ */
 char *parse_string(char *str)
 {
-    // Skip whitespace
+    // Skip leading whitespace
     while (*input_pos && isspace(*input_pos))
         input_pos++;
+
     char *start = input_pos;
+
+    // Find closing quote
     while (*input_pos && *input_pos != '"')
         input_pos++;
+
     if (*input_pos == '"') {
-        *input_pos++ = '\0';
-        strcpy(str, start);
+        *input_pos++ = '\0';  // Replace quote with null terminator
+        strcpy(str, start);   // Copy the string content
         return str;
     }
-    return NULL;
+    return NULL;  // No closing quote found
 }
 
-// Main interpreter loop (REPL)
+// Main interpreter loop (REPL) - Read-Eval-Print Loop for interactive Forth execution
 void repl(void)
 {
-    char line[MAX_LINE_LEN];
-    char token[MAX_WORD_LEN];
+    char line[MAX_LINE_LEN];     // Input line buffer
+    char token[MAX_WORD_LEN];    // Token buffer for current word
 
     printf("Forth Interpreter Ready. Type 'quit' to exit.\n");
 
+    // Main REPL loop - read lines from stdin until 'quit'
     while (fgets(line, sizeof(line), stdin))
     {
+        // Check for quit command
         if (strcmp(line, "quit\n") == 0)
             break;
 
+        // Set up input processing for this line
         current_input = line;
         input_pos = line;
+
+        // Process each token in the input line
         while (tokenize(token) != NULL)
         {
-            if (state == 1) // Compile mode
+            if (state == 1) // Compile mode - building user-defined words
             {
                 Word *word = dict_find(token);
                 if (word)
                 {
                     if (word->immediate)
                     {
-                        // Execute immediate word even in compile mode
+                        // Execute immediate words (like control flow) during compilation
                         execute_word(word);
                     }
                     else
                     {
-                        // Compile word reference
+                        // Compile word reference into code buffer
                         if (code_sp >= STACK_SIZE)
                         {
                             error("Code buffer overflow");
-                            state = 0;
+                            state = 0;  // Reset to interpret mode
                             current_word = NULL;
                             break;
                         }
@@ -1440,47 +1727,47 @@ void repl(void)
                 }
                 else
                 {
-                    // Try to parse as number
+                    // Try to parse token as a number for literal compilation
                     char *endptr;
                     Cell num = strtoll(token, &endptr, base);
-                    if (*endptr == '\0')
+                    if (*endptr == '\0')  // Successfully parsed as number
                     {
-                        // Compile literal
+                        // Compile literal value
                         if (code_sp >= STACK_SIZE - 1)
                         {
                             error("Code buffer overflow");
-                            state = 0;
+                            state = 0;  // Reset to interpret mode
                             current_word = NULL;
                             break;
                         }
-                        code_buffer[code_sp++] = OP_LIT;
-                        code_buffer[code_sp++] = num;
+                        code_buffer[code_sp++] = OP_LIT;  // Literal opcode
+                        code_buffer[code_sp++] = num;     // The literal value
                     }
                     else
                     {
                         error("Unknown word in compilation");
-                        state = 0;
+                        state = 0;  // Reset to interpret mode
                         current_word = NULL;
                         break;
                     }
                 }
             }
             else
-            { // Interpret mode
+            { // Interpret mode - immediate execution
                 Word *word = dict_find(token);
                 if (word)
                 {
-                    // Execute word
+                    // Execute the found word
                     execute_word(word);
                 }
                 else
                 {
-                    // Try to parse as number
+                    // Try to parse token as a number
                     char *endptr;
                     Cell num = strtoll(token, &endptr, base);
-                    if (*endptr == '\0')
+                    if (*endptr == '\0')  // Successfully parsed as number
                     {
-                        stack_push(num);
+                        stack_push(num);  // Push number onto data stack
                     }
                     else
                     {
@@ -1489,19 +1776,25 @@ void repl(void)
                 }
             }
         }
+        // Optional: uncomment to show stack after each line
         // print_stack();
         // cr();
     }
 }
 
+/**
+ * Program entry point
+ * Initialize the Forth interpreter and start the REPL
+ */
 int main(void)
 {
-    forth_init();
-    repl();
-    // Free allocated words on exit (for completeness)
+    forth_init();  // Set up interpreter with built-in words
+    repl();        // Start Read-Eval-Print Loop
+
+    // Clean up allocated memory (optional, but good practice)
     for (int i = 0; i < dict.count; i++)
     {
-        free(dict.words[i]);
+        free(dict.words[i]);  // Free each word structure
     }
     return 0;
 }
