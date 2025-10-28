@@ -9,10 +9,12 @@ A simple, stack-based Forth-like language interpreter implemented in standard C.
 ### Core Operations
 - **Arithmetic Operations**: +, -, *, /, mod, /mod, abs, negate, min, max, 1+, 1-, 2*, 2/
 - **Stack Manipulation**: dup, drop, swap, over, rot, nip, tuck, depth, ?dup, 2dup, 2drop, 2swap
+- **Return Stack**: >r, r>, r@ (temporary storage for complex algorithms)
 - **Comparison Operations**: =, <, >, <=, >=, <>, 0=, 0<, 0>
 - **Logical Operations**: and, or, not, xor, lshift, rshift
-- **I/O Operations**: ., .s (stack display), cr, emit, space, spaces, ." (string output)
-- **Memory Operations**: !, @, here
+- **I/O Operations**: ., .s (stack display), cr, emit, space, spaces, ." (string output), u. (unsigned), .r (formatted), .h (hex)
+- **Memory Operations**: !, @, +!, c!, c@, , (comma), here
+- **Number Base**: hex, decimal, binary (affects input/output)
 - **Defining Words**: VARIABLE, CONSTANT, CREATE, : (colon), ; (semicolon)
 - **Control Flow**: if-then-else, begin-until, begin-while-repeat, do-loop
 - **Utility**: true, false, cells, allot, i, j
@@ -25,6 +27,11 @@ A simple, stack-based Forth-like language interpreter implemented in standard C.
 
 ## Recent Improvements
 
+- ✅ **Phase 2 Functions Added**: Implemented 13 essential functions including:
+  - Return stack: >r, r>, r@ (critical for complex algorithms)
+  - Memory: +!, c!, c@, , (comma) for byte operations
+  - Number base: hex, decimal, binary (base-aware I/O)
+  - Output: u., .r, .h for formatted output
 - ✅ **Phase 1 Functions Added**: Implemented 23 new high-value functions including:
   - Stack operations: depth, ?dup, 2dup, 2drop, 2swap
   - Arithmetic: abs, negate, min, max, 1+, 1-, 2*, 2/, /mod

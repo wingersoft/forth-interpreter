@@ -302,11 +302,47 @@ Cell mem_fetch(int addr)
 
 /**
  * Print a cell value to stdout followed by a space
+ * Respects the current number base setting
  * @param value The cell value to print
  */
 void print_cell(Cell value)
 {
-    printf("%lld ", value);
+    if (base == 10)
+    {
+        printf("%lld ", value);
+    }
+    else if (base == 16)
+    {
+        printf("%llx ", (unsigned long long)value);
+    }
+    else if (base == 2)
+    {
+        // Print binary representation
+        if (value == 0)
+        {
+            printf("0 ");
+            return;
+        }
+        char binary[65];
+        int i = 0;
+        unsigned long long uval = (unsigned long long)value;
+        while (uval > 0 && i < 64)
+        {
+            binary[i++] = (uval & 1) ? '1' : '0';
+            uval >>= 1;
+        }
+        // Reverse and print
+        for (int j = i - 1; j >= 0; j--)
+        {
+            putchar(binary[j]);
+        }
+        putchar(' ');
+    }
+    else
+    {
+        // For other bases, use decimal
+        printf("%lld ", value);
+    }
 }
 
 /**
@@ -888,6 +924,169 @@ void zero_greater(void)
     Cell n = stack_pop();
     stack_push(n > 0 ? -1 : 0);
 }
+
+// Phase 2 New Functions - Return stack operations, memory enhancements, number base, output formatting
+
+// Return stack user-accessible operations
+
+/**
+ * >R: ( n -- ) (R: -- n )
+ * Move top of data stack to return stack
+ */
+void to_r(void)
+{
+    Cell n = stack_pop();
+    rstack_push(n);
+}
+
+/**
+ * R>: ( -- n ) (R: n -- )
+ * Move top of return stack to data stack
+ */
+void r_from(void)
+{
+    Cell n = rstack_pop();
+    stack_push(n);
+}
+
+/**
+ * R@: ( -- n ) (R: n -- n )
+ * Copy top of return stack to data stack without removing
+ */
+void r_fetch(void)
+{
+    Cell n = rstack_peek();
+    stack_push(n);
+}
+
+// Enhanced memory operations
+
+/**
+ * +!: ( n addr -- )
+ * Add n to the value at memory address addr
+ */
+void plus_store(void)
+{
+    Cell addr = stack_pop();
+    Cell n = stack_pop();
+    if (addr < 0 || addr >= STACK_SIZE)
+    {
+        error("Invalid memory address");
+        return;
+    }
+    memory[addr] += n;
+}
+
+/**
+ * C!: ( c addr -- )
+ * Store byte value c at memory address addr
+ */
+void c_store(void)
+{
+    Cell addr = stack_pop();
+    Cell c = stack_pop();
+    if (addr < 0 || addr >= STACK_SIZE)
+    {
+        error("Invalid memory address");
+        return;
+    }
+    // Store only the low byte
+    memory[addr] = c & 0xFF;
+}
+
+/**
+ * C@: ( addr -- c )
+ * Fetch byte value from memory address addr
+ */
+void c_fetch(void)
+{
+    Cell addr = stack_pop();
+    if (addr < 0 || addr >= STACK_SIZE)
+    {
+        error("Invalid memory address");
+        return;
+    }
+    // Fetch and mask to byte
+    stack_push(memory[addr] & 0xFF);
+}
+
+/**
+ * , (comma): ( n -- )
+ * Compile n into the next memory location and increment HERE
+ */
+void comma(void)
+{
+    Cell n = stack_pop();
+    if (next_mem_addr >= STACK_SIZE)
+    {
+        error("Memory full");
+        return;
+    }
+    memory[next_mem_addr++] = n;
+}
+
+// Number base control operations
+
+/**
+ * HEX: ( -- )
+ * Set number base to hexadecimal (16)
+ */
+void hex_word(void)
+{
+    base = 16;
+}
+
+/**
+ * DECIMAL: ( -- )
+ * Set number base to decimal (10)
+ */
+void decimal_word(void)
+{
+    base = 10;
+}
+
+/**
+ * BINARY: ( -- )
+ * Set number base to binary (2)
+ */
+void binary_word(void)
+{
+    base = 2;
+}
+
+// Output formatting operations
+
+/**
+ * U.: ( u -- )
+ * Print unsigned number
+ */
+void u_dot(void)
+{
+    Cell value = stack_pop();
+    printf("%llu ", (unsigned long long)value);
+}
+
+/**
+ * .R: ( n width -- )
+ * Print number right-justified in field of specified width
+ */
+void dot_r(void)
+{
+    Cell width = stack_pop();
+    Cell value = stack_pop();
+    printf("%*lld ", (int)width, value);
+}
+
+/**
+ * .H or H.: ( n -- )
+ * Print number in hexadecimal format regardless of current base
+ */
+void dot_hex(void)
+{
+    Cell value = stack_pop();
+    printf("%llx ", (unsigned long long)value);
+}
+
 
 
 // Built-in memory operations - Functions for storing and fetching from memory
@@ -2000,6 +2199,127 @@ void forth_init(void)
     w_max->next = NULL;
     dict_add(w_max);
 
+
+    // Phase 2 New Words - Return stack operations
+    Word *w_to_r = malloc(sizeof(Word));
+    strcpy(w_to_r->name, ">r");
+    w_to_r->func = to_r;
+    w_to_r->code = NULL;
+    w_to_r->code_size = 0;
+    w_to_r->immediate = 0;
+    w_to_r->next = NULL;
+    dict_add(w_to_r);
+
+    Word *w_r_from = malloc(sizeof(Word));
+    strcpy(w_r_from->name, "r>");
+    w_r_from->func = r_from;
+    w_r_from->code = NULL;
+    w_r_from->code_size = 0;
+    w_r_from->immediate = 0;
+    w_r_from->next = NULL;
+    dict_add(w_r_from);
+
+    Word *w_r_fetch = malloc(sizeof(Word));
+    strcpy(w_r_fetch->name, "r@");
+    w_r_fetch->func = r_fetch;
+    w_r_fetch->code = NULL;
+    w_r_fetch->code_size = 0;
+    w_r_fetch->immediate = 0;
+    w_r_fetch->next = NULL;
+    dict_add(w_r_fetch);
+
+    // Phase 2 New Words - Memory operations
+    Word *w_plus_store = malloc(sizeof(Word));
+    strcpy(w_plus_store->name, "+!");
+    w_plus_store->func = plus_store;
+    w_plus_store->code = NULL;
+    w_plus_store->code_size = 0;
+    w_plus_store->immediate = 0;
+    w_plus_store->next = NULL;
+    dict_add(w_plus_store);
+
+    Word *w_c_store = malloc(sizeof(Word));
+    strcpy(w_c_store->name, "c!");
+    w_c_store->func = c_store;
+    w_c_store->code = NULL;
+    w_c_store->code_size = 0;
+    w_c_store->immediate = 0;
+    w_c_store->next = NULL;
+    dict_add(w_c_store);
+
+    Word *w_c_fetch = malloc(sizeof(Word));
+    strcpy(w_c_fetch->name, "c@");
+    w_c_fetch->func = c_fetch;
+    w_c_fetch->code = NULL;
+    w_c_fetch->code_size = 0;
+    w_c_fetch->immediate = 0;
+    w_c_fetch->next = NULL;
+    dict_add(w_c_fetch);
+
+    Word *w_comma = malloc(sizeof(Word));
+    strcpy(w_comma->name, ",");
+    w_comma->func = comma;
+    w_comma->code = NULL;
+    w_comma->code_size = 0;
+    w_comma->immediate = 0;
+    w_comma->next = NULL;
+    dict_add(w_comma);
+
+    // Phase 2 New Words - Number base control
+    Word *w_hex = malloc(sizeof(Word));
+    strcpy(w_hex->name, "hex");
+    w_hex->func = hex_word;
+    w_hex->code = NULL;
+    w_hex->code_size = 0;
+    w_hex->immediate = 0;
+    w_hex->next = NULL;
+    dict_add(w_hex);
+
+    Word *w_decimal = malloc(sizeof(Word));
+    strcpy(w_decimal->name, "decimal");
+    w_decimal->func = decimal_word;
+    w_decimal->code = NULL;
+    w_decimal->code_size = 0;
+    w_decimal->immediate = 0;
+    w_decimal->next = NULL;
+    dict_add(w_decimal);
+
+    Word *w_binary = malloc(sizeof(Word));
+    strcpy(w_binary->name, "binary");
+    w_binary->func = binary_word;
+    w_binary->code = NULL;
+    w_binary->code_size = 0;
+    w_binary->immediate = 0;
+    w_binary->next = NULL;
+    dict_add(w_binary);
+
+    // Phase 2 New Words - Output formatting
+    Word *w_u_dot = malloc(sizeof(Word));
+    strcpy(w_u_dot->name, "u.");
+    w_u_dot->func = u_dot;
+    w_u_dot->code = NULL;
+    w_u_dot->code_size = 0;
+    w_u_dot->immediate = 0;
+    w_u_dot->next = NULL;
+    dict_add(w_u_dot);
+
+    Word *w_dot_r = malloc(sizeof(Word));
+    strcpy(w_dot_r->name, ".r");
+    w_dot_r->func = dot_r;
+    w_dot_r->code = NULL;
+    w_dot_r->code_size = 0;
+    w_dot_r->immediate = 0;
+    w_dot_r->next = NULL;
+    dict_add(w_dot_r);
+
+    Word *w_dot_hex = malloc(sizeof(Word));
+    strcpy(w_dot_hex->name, ".h");
+    w_dot_hex->func = dot_hex;
+    w_dot_hex->code = NULL;
+    w_dot_hex->code_size = 0;
+    w_dot_hex->immediate = 0;
+    w_dot_hex->next = NULL;
+    dict_add(w_dot_hex);
     Word *w_1plus = malloc(sizeof(Word));
     strcpy(w_1plus->name, "1+");
     w_1plus->func = one_plus;
