@@ -138,6 +138,11 @@ extern char *current_input;  // Current input line being processed
 extern char *input_pos;      // Current position within input line
 extern int next_mem_addr;    // Next available memory address for variables
 
+// String handling - Transient buffer for string literals
+#define STRING_BUFFER_START 100      // Starting address for transient string buffer
+#define STRING_BUFFER_SIZE 200       // Size of transient buffer (200 bytes)
+extern int string_buffer_pos;        // Current position in transient buffer
+
 // Input processing - Functions for parsing and tokenizing input text
 char *tokenize(char *token);    // Extract next token from input stream
 
@@ -147,6 +152,12 @@ void execute_word(Word *word);  // Execute a word by name or reference
 // Defining words - Special words that create new words in the dictionary
 void variable_word(void);      // Create a variable (pushes address)
 void constant_word(void);      // Create a constant (pushes fixed value)
+
+// String handling operations - Core string manipulation functions
+void type_word(void);          // TYPE: ( c-addr u -- ) Display u characters from address
+void count_word(void);         // COUNT: ( c-addr -- c-addr+1 u ) Convert counted string
+void s_quote(void);            // S": ( "ccc<quote>" -- c-addr u ) Parse string literal
+void c_comma(void);            // C,: ( c -- ) Compile byte into next memory location
 
 // Utility functions - Helper functions for internal operations
 int dict_find_index(const char *name); // Find word index in dictionary (unused)

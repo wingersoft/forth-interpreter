@@ -13,8 +13,9 @@ A simple, stack-based Forth-like language interpreter implemented in standard C.
 - **Comparison Operations**: =, <, >, <=, >=, <>, 0=, 0<, 0>
 - **Logical Operations**: and, or, not, xor, lshift, rshift
 - **I/O Operations**: ., .s (stack display), cr, emit, space, spaces, ." (string output), u. (unsigned), .r (formatted), .h (hex)
-- **Memory Operations**: !, @, +!, c!, c@, , (comma), here
+- **Memory Operations**: !, @, +!, c!, c@, , (comma), c, (c-comma), here
 - **Number Base**: hex, decimal, binary (affects input/output)
+- **String Handling**: S" (string literal), TYPE (display string), COUNT (counted string conversion)
 - **Defining Words**: VARIABLE, CONSTANT, CREATE, : (colon), ; (semicolon)
 - **Control Flow**: if-then-else, begin-until, begin-while-repeat, do-loop
 - **Utility**: true, false, cells, allot, i, j
@@ -27,6 +28,13 @@ A simple, stack-based Forth-like language interpreter implemented in standard C.
 
 ## Recent Improvements
 
+- ✅ **Phase 3 String Handling**: Implemented core string operations:
+  - S" (string literal with interpret and compile mode support)
+  - TYPE (display strings from address+length)
+  - COUNT (convert counted strings to modern format)
+  - C, (c-comma for building counted strings)
+  - Transient buffer for interpret mode (memory[100-299])
+  - Compiled strings embedded in word definitions
 - ✅ **Phase 2 Functions Added**: Implemented 13 essential functions including:
   - Return stack: >r, r>, r@ (critical for complex algorithms)
   - Memory: +!, c!, c@, , (comma) for byte operations
@@ -121,6 +129,25 @@ The REPL will start with "Forth Interpreter Ready. Type 'quit' to exit."
   42 constant answer answer . cr
   ```
   Output: `42 `
+
+- String Handling:
+  ```
+  S" Hello, World!" TYPE cr
+  ```
+  Output: `Hello, World! `
+
+- User-Defined Words with Strings:
+  ```
+  : greet S" Welcome to Forth!" TYPE cr ; greet
+  ```
+  Output: `Welcome to Forth! `
+
+- Counted Strings:
+  ```
+  CREATE cstr 5 c, 72 c, 101 c, 108 c, 108 c, 111 c,
+  cstr COUNT TYPE cr
+  ```
+  Output: `Hello `
 
 - Complex Control Flow:
   ```

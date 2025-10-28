@@ -16,6 +16,7 @@ Forth is a stack-based programming language and environment known for its simpli
 - **User-defined words**: Create custom functions using `:` and `;`
 - **Control flow**: if-then-else, loops (begin-until, begin-while-repeat, do-loop)
 - **Memory operations**: Store and fetch values from memory
+- **String operations**: Display strings, convert formats, build counted strings
 - **Arithmetic and logical operations**: Complete set of mathematical and comparison operations
 
 ## Getting Started
@@ -176,6 +177,15 @@ The interpreter runs in an interactive loop:
 | `u.` | `( u -- )` | Print unsigned number |
 | `.r` | `( n width -- )` | Print number right-justified in field |
 | `.h` | `( n -- )` | Print number in hexadecimal |
+
+### String Operations
+
+| Word | Stack Effect | Description |
+|------|-------------|-------------|
+| `S"` | `( -- addr len )` | Parse string literal, return address and length |
+| `TYPE` | `( addr len -- )` | Display string from address+length pair |
+| `COUNT` | `( addr -- addr+1 len )` | Convert counted string to modern format |
+| `C,` | `( c -- )` | Compile byte into memory, increment HERE |
 
 ### Return Stack Operations
 
@@ -398,6 +408,26 @@ Outputs:
 | `cells` | `( n -- bytes )` | Convert cells to bytes |
 | `allot` | `( n -- )` | Allocate n cells of memory |
 
+### String Handling
+
+Strings in this Forth implementation use ANS Forth conventions:
+
+- **S"** parses string literals and returns address/length pairs
+- **TYPE** displays strings from address+length pairs
+- **COUNT** converts counted strings (addr+length byte) to modern format
+- **C,** builds counted strings byte-by-byte
+
+**String Literals**:
+```
+S" Hello, World!" TYPE
+```
+
+**Counted Strings**:
+```
+CREATE greeting 13 C, 72 C, 101 C, 108 C, 108 C, 111 C, 44 C, 32 C, 87 C, 111 C, 114 C, 108 C, 100 C, 33 C,
+greeting COUNT TYPE
+```
+
 ### Loop Indices
 
 In do-loops, access the current index:
@@ -455,6 +485,20 @@ x @ .
 
 100 CONSTANT max-value
 max-value .
+```
+
+### String Operations
+```
+\ Display a string literal
+S" Hello, World!" TYPE
+
+\ Create and display a counted string
+CREATE greeting 13 C, 72 C, 101 C, 108 C, 108 C, 111 C, 44 C, 32 C, 87 C, 111 C, 114 C, 108 C, 100 C, 33 C,
+greeting COUNT TYPE
+
+\ String in a word definition
+: hello S" Hello, Forth!" TYPE ;
+hello
 ```
 
 ## Error Handling
@@ -522,9 +566,15 @@ drop .s cr
 - Return stack: 1024 cells
 - Dictionary: 256 words maximum
 
+### Memory Layout
+- Memory[0-99]: Variables and user data
+- Memory[100-299]: Transient string buffer (200 bytes) for interpret mode
+- Memory[300+]: Permanent string storage and compiled data
+
 ### Data Types
 - All values are 64-bit integers (`long long`)
 - Memory addresses are also 64-bit
+- Strings use address+length pairs or counted format
 
 ### Performance
 - Dictionary lookup: O(n) linear search

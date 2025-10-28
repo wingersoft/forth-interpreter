@@ -12,6 +12,11 @@ int code_sp = 0;                     // Code buffer stack pointer during compila
 Word *current_word = NULL;           // Pointer to word currently being compiled
 int next_mem_addr = 0;               // Next available address in memory array
 
+// String handling - Transient buffer for string literals in interpret mode
+#define STRING_BUFFER_START 100      // Starting address for transient string buffer
+#define STRING_BUFFER_SIZE 200       // Size of transient buffer (200 bytes)
+int string_buffer_pos = STRING_BUFFER_START;  // Current position in transient buffer
+
 // Input handling - Variables for parsing input text
 char *current_input = NULL;          // Current input line being processed
 char *input_pos = NULL;              // Current position in input string during tokenization
@@ -1025,6 +1030,21 @@ void comma(void)
     memory[next_mem_addr++] = n;
 }
 
+/**
+ * C, (c-comma): ( c -- )
+ * Compile byte c into the next memory location and increment HERE
+ */
+void c_comma(void)
+{
+    Cell c = stack_pop();
+    if (next_mem_addr >= STACK_SIZE)
+    {
+        error("Memory full");
+        return;
+    }
+    memory[next_mem_addr++] = c & 0xFF;
+}
+
 // Number base control operations
 
 /**
@@ -1087,6 +1107,136 @@ void dot_hex(void)
     printf("%llx ", (unsigned long long)value);
 }
 
+// Phase 3 String Handling Functions - Core operations for string manipulation
+
+/**
+ * TYPE: ( c-addr u -- )
+ * Display u characters starting at address c-addr
+ * This is the fundamental string output operation in Forth
+ */
+void type_word(void)
+{
+    Cell u = stack_pop();      // Number of characters to display
+    Cell c_addr = stack_pop(); // Starting address
+
+    if (c_addr < 0 || c_addr >= STACK_SIZE)
+    {
+        error("Invalid string address");
+        return;
+    }
+
+    // Display each character from memory
+    for (Cell i = 0; i < u; i++)
+    {
+        if (c_addr + i >= STACK_SIZE)
+        {
+            error("String address out of bounds");
+            return;
+        }
+        putchar((int)(memory[c_addr + i] & 0xFF));
+    }
+}
+
+/**
+ * COUNT: ( c-addr -- c-addr+1 u )
+ * Convert counted string to modern address+length format
+ * A counted string has its length in the first byte
+ */
+void count_word(void)
+{
+    Cell c_addr = stack_pop(); // Address of counted string
+
+    if (c_addr < 0 || c_addr >= STACK_SIZE)
+    {
+        error("Invalid string address");
+        return;
+    }
+
+    // First byte contains the length
+    Cell length = memory[c_addr] & 0xFF;
+
+    // Push address of first character (c-addr+1)
+    stack_push(c_addr + 1);
+
+    // Push length
+    stack_push(length);
+}
+
+/**
+ * S": ( "ccc<quote>" -- c-addr u )
+ * Parse string literal until closing quote
+ *
+ * Interpret mode: Store string in transient buffer and return address+length
+ * Compile mode: Compile string inline in word definition
+ */
+void s_quote(void)
+{
+    char str[MAX_LINE_LEN];
+
+    // Parse string until closing quote
+    if (!parse_string(str))
+    {
+        error("Expected closing quote after S\"");
+        return;
+    }
+
+    int length = strlen(str);
+
+    if (state == 0)
+    {
+        // Interpret mode: copy to transient buffer
+        if (string_buffer_pos + length >= STRING_BUFFER_START + STRING_BUFFER_SIZE)
+        {
+            // Wrap around to start of buffer
+            string_buffer_pos = STRING_BUFFER_START;
+        }
+
+        if (length > STRING_BUFFER_SIZE)
+        {
+            error("String too long for buffer");
+            return;
+        }
+
+        // Copy string to transient buffer
+        for (int i = 0; i < length; i++)
+        {
+            memory[string_buffer_pos + i] = str[i];
+        }
+
+        // Push address and length onto stack
+        stack_push(string_buffer_pos);
+        stack_push(length);
+
+        // Update buffer position for next string
+        string_buffer_pos += length;
+    }
+    else
+    {
+        // Compile mode: store string in actual memory and compile address reference
+        if (next_mem_addr + length >= STACK_SIZE)
+        {
+            error("Memory full");
+            return;
+        }
+
+        // Store the string address before allocating
+        int string_addr = next_mem_addr;
+
+        // Copy string to memory
+        for (int i = 0; i < length; i++)
+        {
+            memory[next_mem_addr++] = str[i];
+        }
+
+        // Compile: OP_LIT followed by memory address where string is stored
+        code_buffer[code_sp++] = OP_LIT;
+        code_buffer[code_sp++] = string_addr;
+
+        // Compile: OP_LIT followed by string length
+        code_buffer[code_sp++] = OP_LIT;
+        code_buffer[code_sp++] = length;
+    }
+}
 
 
 // Built-in memory operations - Functions for storing and fetching from memory
@@ -2265,6 +2415,15 @@ void forth_init(void)
     w_comma->next = NULL;
     dict_add(w_comma);
 
+    Word *w_c_comma = malloc(sizeof(Word));
+    strcpy(w_c_comma->name, "c,");
+    w_c_comma->func = c_comma;
+    w_c_comma->code = NULL;
+    w_c_comma->code_size = 0;
+    w_c_comma->immediate = 0;
+    w_c_comma->next = NULL;
+    dict_add(w_c_comma);
+
     // Phase 2 New Words - Number base control
     Word *w_hex = malloc(sizeof(Word));
     strcpy(w_hex->name, "hex");
@@ -2320,6 +2479,35 @@ void forth_init(void)
     w_dot_hex->immediate = 0;
     w_dot_hex->next = NULL;
     dict_add(w_dot_hex);
+
+    // Phase 3 New Words - String handling operations
+    Word *w_type = malloc(sizeof(Word));
+    strcpy(w_type->name, "TYPE");
+    w_type->func = type_word;
+    w_type->code = NULL;
+    w_type->code_size = 0;
+    w_type->immediate = 0;
+    w_type->next = NULL;
+    dict_add(w_type);
+
+    Word *w_count = malloc(sizeof(Word));
+    strcpy(w_count->name, "COUNT");
+    w_count->func = count_word;
+    w_count->code = NULL;
+    w_count->code_size = 0;
+    w_count->immediate = 0;
+    w_count->next = NULL;
+    dict_add(w_count);
+
+    Word *w_s_quote = malloc(sizeof(Word));
+    strcpy(w_s_quote->name, "S\"");
+    w_s_quote->func = s_quote;
+    w_s_quote->code = NULL;
+    w_s_quote->code_size = 0;
+    w_s_quote->immediate = 1;  // Immediate for compile-time behavior
+    w_s_quote->next = NULL;
+    dict_add(w_s_quote);
+
     Word *w_1plus = malloc(sizeof(Word));
     strcpy(w_1plus->name, "1+");
     w_1plus->func = one_plus;
@@ -2500,6 +2688,14 @@ char *tokenize(char *token)
 
     // Special handling for .\" (dot-quote) word
     if (strncmp(start, ".\"", 2) == 0) {
+        input_pos += 2;
+        strncpy(token, start, 2);
+        token[2] = '\0';
+        return input_pos;
+    }
+
+    // Special handling for S\" (s-quote) word
+    if (strncmp(start, "S\"", 2) == 0) {
         input_pos += 2;
         strncpy(token, start, 2);
         token[2] = '\0';
