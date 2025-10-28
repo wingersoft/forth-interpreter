@@ -6,21 +6,31 @@ A simple, stack-based Forth-like language interpreter implemented in standard C.
 
 ## Features
 
-- **Arithmetic Operations**: +, -, *, /, mod
-- **Stack Manipulation**: dup, drop, swap, over, rot, nip, tuck
-- **Comparison Operations**: =, <, >, <=, >=, <>
-- **Logical Operations**: and, or, not
-- **I/O Operations**: ., .s (stack display), cr (carriage return)
+### Core Operations
+- **Arithmetic Operations**: +, -, *, /, mod, /mod, abs, negate, min, max, 1+, 1-, 2*, 2/
+- **Stack Manipulation**: dup, drop, swap, over, rot, nip, tuck, depth, ?dup, 2dup, 2drop, 2swap
+- **Comparison Operations**: =, <, >, <=, >=, <>, 0=, 0<, 0>
+- **Logical Operations**: and, or, not, xor, lshift, rshift
+- **I/O Operations**: ., .s (stack display), cr, emit, space, spaces, ." (string output)
+- **Memory Operations**: !, @, here
+- **Defining Words**: VARIABLE, CONSTANT, CREATE, : (colon), ; (semicolon)
+- **Control Flow**: if-then-else, begin-until, begin-while-repeat, do-loop
+- **Utility**: true, false, cells, allot, i, j
+
+### System Features
 - **User-Defined Words**: Define custom functions with : word-name ... ; syntax
-- **Memory Operations**: ! (store), @ (fetch)
-- **Defining Words**: VARIABLE, CONSTANT, CREATE for expandable words
-- **Control Flow**: if-then-else, begin-until, begin-while-repeat, do-loop (fully debugged and tested)
 - **REPL**: Interactive read-eval-print loop for immediate feedback
 - **Error Handling**: Non-fatal error recovery with state reset
 - **Portable**: Standard C, no external dependencies
 
 ## Recent Improvements
 
+- ✅ **Phase 1 Functions Added**: Implemented 23 new high-value functions including:
+  - Stack operations: depth, ?dup, 2dup, 2drop, 2swap
+  - Arithmetic: abs, negate, min, max, 1+, 1-, 2*, 2/, /mod
+  - Logical: xor, lshift, rshift
+  - I/O: emit, space, spaces
+  - Utilities: here, true, false, 0=, 0<, 0>
 - ✅ **Control Flow Debugging**: Fixed critical bugs in if-then-else, begin-until, begin-while-repeat, and do-loop implementations
 - ✅ **Branch Offset Calculations**: Corrected offset storage and execution logic for all branching operations
 - ✅ **Pointer Detection**: Enhanced word reference detection for proper execution

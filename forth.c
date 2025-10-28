@@ -585,6 +585,310 @@ void not_op(void)
     Cell a = stack_pop();
     stack_push(~a);
 }
+// Phase 1 New Functions - Stack operations, arithmetic shortcuts, logical ops, I/O, and utilities
+
+// Stack depth and manipulation operations
+
+/**
+ * DEPTH: ( -- n )
+ * Return the number of items on the data stack
+ */
+void depth_word(void)
+{
+    stack_push(data_stack.sp + 1);
+}
+
+/**
+ * ?DUP: ( n -- 0 | n n )
+ * Duplicate top of stack if non-zero
+ */
+void question_dup(void)
+{
+    Cell top = stack_peek();
+    if (top != 0)
+    {
+        stack_push(top);
+    }
+}
+
+/**
+ * 2DUP: ( a b -- a b a b )
+ * Duplicate the top two stack items
+ */
+void two_dup(void)
+{
+    if (data_stack.sp < 1)
+    {
+        error("Stack underflow");
+        return;
+    }
+    Cell b = data_stack.stack[data_stack.sp];
+    Cell a = data_stack.stack[data_stack.sp - 1];
+    stack_push(a);
+    stack_push(b);
+}
+
+/**
+ * 2DROP: ( a b -- )
+ * Remove the top two stack items
+ */
+void two_drop(void)
+{
+    stack_pop();
+    stack_pop();
+}
+
+/**
+ * 2SWAP: ( a b c d -- c d a b )
+ * Swap the top two pairs of stack items
+ */
+void two_swap(void)
+{
+    if (data_stack.sp < 3)
+    {
+        error("Stack underflow");
+        return;
+    }
+    Cell d = stack_pop();
+    Cell c = stack_pop();
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(c);
+    stack_push(d);
+    stack_push(a);
+    stack_push(b);
+}
+
+// Arithmetic shortcut operations
+
+/**
+ * ABS: ( n -- |n| )
+ * Return the absolute value of n
+ */
+void abs_word(void)
+{
+    Cell n = stack_pop();
+    stack_push(n < 0 ? -n : n);
+}
+
+/**
+ * NEGATE: ( n -- -n )
+ * Negate the top of stack (two's complement)
+ */
+void negate_word(void)
+{
+    Cell n = stack_pop();
+    stack_push(-n);
+}
+
+/**
+ * MIN: ( a b -- min )
+ * Return the minimum of two values
+ */
+void min_word(void)
+{
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a < b ? a : b);
+}
+
+/**
+ * MAX: ( a b -- max )
+ * Return the maximum of two values
+ */
+void max_word(void)
+{
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a > b ? a : b);
+}
+
+/**
+ * 1+: ( n -- n+1 )
+ * Increment top of stack by 1
+ */
+void one_plus(void)
+{
+    Cell n = stack_pop();
+    stack_push(n + 1);
+}
+
+/**
+ * 1-: ( n -- n-1 )
+ * Decrement top of stack by 1
+ */
+void one_minus(void)
+{
+    Cell n = stack_pop();
+    stack_push(n - 1);
+}
+
+/**
+ * 2*: ( n -- n*2 )
+ * Multiply top of stack by 2
+ */
+void two_star(void)
+{
+    Cell n = stack_pop();
+    stack_push(n * 2);
+}
+
+/**
+ * 2/: ( n -- n/2 )
+ * Divide top of stack by 2 (arithmetic shift)
+ */
+void two_slash(void)
+{
+    Cell n = stack_pop();
+    stack_push(n / 2);
+}
+
+/**
+ * /MOD: ( a b -- rem quot )
+ * Divide a by b, return remainder and quotient
+ */
+void slash_mod(void)
+{
+    Cell b = stack_pop();
+    if (b == 0)
+    {
+        error("Division by zero");
+        return;
+    }
+    Cell a = stack_pop();
+    stack_push(a % b);  // Remainder
+    stack_push(a / b);  // Quotient
+}
+
+// Additional logical operations
+
+/**
+ * XOR: ( a b -- a^b )
+ * Bitwise exclusive OR
+ */
+void xor_op(void)
+{
+    Cell b = stack_pop();
+    Cell a = stack_pop();
+    stack_push(a ^ b);
+}
+
+/**
+ * LSHIFT: ( n u -- n<<u )
+ * Left shift n by u bits
+ */
+void lshift_word(void)
+{
+    Cell u = stack_pop();
+    Cell n = stack_pop();
+    stack_push(n << u);
+}
+
+/**
+ * RSHIFT: ( n u -- n>>u )
+ * Right shift n by u bits (logical shift)
+ */
+void rshift_word(void)
+{
+    Cell u = stack_pop();
+    Cell n = stack_pop();
+    // Use unsigned shift to ensure logical shift
+    stack_push((Cell)((unsigned long long)n >> u));
+}
+
+// Character and space I/O operations
+
+/**
+ * EMIT: ( c -- )
+ * Output a character to stdout
+ */
+void emit_word(void)
+{
+    Cell c = stack_pop();
+    putchar((int)c);
+}
+
+/**
+ * SPACE: ( -- )
+ * Output a single space character
+ */
+void space_word(void)
+{
+    putchar(' ');
+}
+
+/**
+ * SPACES: ( n -- )
+ * Output n space characters
+ */
+void spaces_word(void)
+{
+    Cell n = stack_pop();
+    for (Cell i = 0; i < n; i++)
+    {
+        putchar(' ');
+    }
+}
+
+// Utility operations
+
+/**
+ * HERE: ( -- addr )
+ * Return the next available memory address
+ */
+void here_word(void)
+{
+    stack_push(next_mem_addr);
+}
+
+/**
+ * TRUE: ( -- -1 )
+ * Push the boolean true value (-1)
+ */
+void true_word(void)
+{
+    stack_push(-1);
+}
+
+/**
+ * FALSE: ( -- 0 )
+ * Push the boolean false value (0)
+ */
+void false_word(void)
+{
+    stack_push(0);
+}
+
+/**
+ * 0=: ( n -- flag )
+ * Test if n equals zero, return flag
+ */
+void zero_equal(void)
+{
+    Cell n = stack_pop();
+    stack_push(n == 0 ? -1 : 0);
+}
+
+/**
+ * 0<: ( n -- flag )
+ * Test if n is less than zero (negative), return flag
+ */
+void zero_less(void)
+{
+    Cell n = stack_pop();
+    stack_push(n < 0 ? -1 : 0);
+}
+
+/**
+ * 0>: ( n -- flag )
+ * Test if n is greater than zero (positive), return flag
+ */
+void zero_greater(void)
+{
+    Cell n = stack_pop();
+    stack_push(n > 0 ? -1 : 0);
+}
+
 
 // Built-in memory operations - Functions for storing and fetching from memory
 
@@ -1612,6 +1916,245 @@ void forth_init(void)
     Word *w_semicolon = malloc(sizeof(Word));
     strcpy(w_semicolon->name, ";");
     w_semicolon->func = semicolon;
+
+    // Phase 1 New Words - Stack operations
+    Word *w_depth = malloc(sizeof(Word));
+    strcpy(w_depth->name, "depth");
+    w_depth->func = depth_word;
+    w_depth->code = NULL;
+    w_depth->code_size = 0;
+    w_depth->immediate = 0;
+    w_depth->next = NULL;
+    dict_add(w_depth);
+
+    Word *w_qdup = malloc(sizeof(Word));
+    strcpy(w_qdup->name, "?dup");
+    w_qdup->func = question_dup;
+    w_qdup->code = NULL;
+    w_qdup->code_size = 0;
+    w_qdup->immediate = 0;
+    w_qdup->next = NULL;
+    dict_add(w_qdup);
+
+    Word *w_2dup = malloc(sizeof(Word));
+    strcpy(w_2dup->name, "2dup");
+    w_2dup->func = two_dup;
+    w_2dup->code = NULL;
+    w_2dup->code_size = 0;
+    w_2dup->immediate = 0;
+    w_2dup->next = NULL;
+    dict_add(w_2dup);
+
+    Word *w_2drop = malloc(sizeof(Word));
+    strcpy(w_2drop->name, "2drop");
+    w_2drop->func = two_drop;
+    w_2drop->code = NULL;
+    w_2drop->code_size = 0;
+    w_2drop->immediate = 0;
+    w_2drop->next = NULL;
+    dict_add(w_2drop);
+
+    Word *w_2swap = malloc(sizeof(Word));
+    strcpy(w_2swap->name, "2swap");
+    w_2swap->func = two_swap;
+    w_2swap->code = NULL;
+    w_2swap->code_size = 0;
+    w_2swap->immediate = 0;
+    w_2swap->next = NULL;
+    dict_add(w_2swap);
+
+    // Phase 1 New Words - Arithmetic shortcuts
+    Word *w_abs = malloc(sizeof(Word));
+    strcpy(w_abs->name, "abs");
+    w_abs->func = abs_word;
+    w_abs->code = NULL;
+    w_abs->code_size = 0;
+    w_abs->immediate = 0;
+    w_abs->next = NULL;
+    dict_add(w_abs);
+
+    Word *w_negate = malloc(sizeof(Word));
+    strcpy(w_negate->name, "negate");
+    w_negate->func = negate_word;
+    w_negate->code = NULL;
+    w_negate->code_size = 0;
+    w_negate->immediate = 0;
+    w_negate->next = NULL;
+    dict_add(w_negate);
+
+    Word *w_min = malloc(sizeof(Word));
+    strcpy(w_min->name, "min");
+    w_min->func = min_word;
+    w_min->code = NULL;
+    w_min->code_size = 0;
+    w_min->immediate = 0;
+    w_min->next = NULL;
+    dict_add(w_min);
+
+    Word *w_max = malloc(sizeof(Word));
+    strcpy(w_max->name, "max");
+    w_max->func = max_word;
+    w_max->code = NULL;
+    w_max->code_size = 0;
+    w_max->immediate = 0;
+    w_max->next = NULL;
+    dict_add(w_max);
+
+    Word *w_1plus = malloc(sizeof(Word));
+    strcpy(w_1plus->name, "1+");
+    w_1plus->func = one_plus;
+    w_1plus->code = NULL;
+    w_1plus->code_size = 0;
+    w_1plus->immediate = 0;
+    w_1plus->next = NULL;
+    dict_add(w_1plus);
+
+    Word *w_1minus = malloc(sizeof(Word));
+    strcpy(w_1minus->name, "1-");
+    w_1minus->func = one_minus;
+    w_1minus->code = NULL;
+    w_1minus->code_size = 0;
+    w_1minus->immediate = 0;
+    w_1minus->next = NULL;
+    dict_add(w_1minus);
+
+    Word *w_2star = malloc(sizeof(Word));
+    strcpy(w_2star->name, "2*");
+    w_2star->func = two_star;
+    w_2star->code = NULL;
+    w_2star->code_size = 0;
+    w_2star->immediate = 0;
+    w_2star->next = NULL;
+    dict_add(w_2star);
+
+    Word *w_2slash = malloc(sizeof(Word));
+    strcpy(w_2slash->name, "2/");
+    w_2slash->func = two_slash;
+    w_2slash->code = NULL;
+    w_2slash->code_size = 0;
+    w_2slash->immediate = 0;
+    w_2slash->next = NULL;
+    dict_add(w_2slash);
+
+    Word *w_slashmod = malloc(sizeof(Word));
+    strcpy(w_slashmod->name, "/mod");
+    w_slashmod->func = slash_mod;
+    w_slashmod->code = NULL;
+    w_slashmod->code_size = 0;
+    w_slashmod->immediate = 0;
+    w_slashmod->next = NULL;
+    dict_add(w_slashmod);
+
+    // Phase 1 New Words - Logical operations
+    Word *w_xor = malloc(sizeof(Word));
+    strcpy(w_xor->name, "xor");
+    w_xor->func = xor_op;
+    w_xor->code = NULL;
+    w_xor->code_size = 0;
+    w_xor->immediate = 0;
+    w_xor->next = NULL;
+    dict_add(w_xor);
+
+    Word *w_lshift = malloc(sizeof(Word));
+    strcpy(w_lshift->name, "lshift");
+    w_lshift->func = lshift_word;
+    w_lshift->code = NULL;
+    w_lshift->code_size = 0;
+    w_lshift->immediate = 0;
+    w_lshift->next = NULL;
+    dict_add(w_lshift);
+
+    Word *w_rshift = malloc(sizeof(Word));
+    strcpy(w_rshift->name, "rshift");
+    w_rshift->func = rshift_word;
+    w_rshift->code = NULL;
+    w_rshift->code_size = 0;
+    w_rshift->immediate = 0;
+    w_rshift->next = NULL;
+    dict_add(w_rshift);
+
+    // Phase 1 New Words - I/O operations
+    Word *w_emit = malloc(sizeof(Word));
+    strcpy(w_emit->name, "emit");
+    w_emit->func = emit_word;
+    w_emit->code = NULL;
+    w_emit->code_size = 0;
+    w_emit->immediate = 0;
+    w_emit->next = NULL;
+    dict_add(w_emit);
+
+    Word *w_space = malloc(sizeof(Word));
+    strcpy(w_space->name, "space");
+    w_space->func = space_word;
+    w_space->code = NULL;
+    w_space->code_size = 0;
+    w_space->immediate = 0;
+    w_space->next = NULL;
+    dict_add(w_space);
+
+    Word *w_spaces = malloc(sizeof(Word));
+    strcpy(w_spaces->name, "spaces");
+    w_spaces->func = spaces_word;
+    w_spaces->code = NULL;
+    w_spaces->code_size = 0;
+    w_spaces->immediate = 0;
+    w_spaces->next = NULL;
+    dict_add(w_spaces);
+
+    // Phase 1 New Words - Utility operations
+    Word *w_here = malloc(sizeof(Word));
+    strcpy(w_here->name, "here");
+    w_here->func = here_word;
+    w_here->code = NULL;
+    w_here->code_size = 0;
+    w_here->immediate = 0;
+    w_here->next = NULL;
+    dict_add(w_here);
+
+    Word *w_true = malloc(sizeof(Word));
+    strcpy(w_true->name, "true");
+    w_true->func = true_word;
+    w_true->code = NULL;
+    w_true->code_size = 0;
+    w_true->immediate = 0;
+    w_true->next = NULL;
+    dict_add(w_true);
+
+    Word *w_false = malloc(sizeof(Word));
+    strcpy(w_false->name, "false");
+    w_false->func = false_word;
+    w_false->code = NULL;
+    w_false->code_size = 0;
+    w_false->immediate = 0;
+    w_false->next = NULL;
+    dict_add(w_false);
+
+    Word *w_0eq = malloc(sizeof(Word));
+    strcpy(w_0eq->name, "0=");
+    w_0eq->func = zero_equal;
+    w_0eq->code = NULL;
+    w_0eq->code_size = 0;
+    w_0eq->immediate = 0;
+    w_0eq->next = NULL;
+    dict_add(w_0eq);
+
+    Word *w_0less = malloc(sizeof(Word));
+    strcpy(w_0less->name, "0<");
+    w_0less->func = zero_less;
+    w_0less->code = NULL;
+    w_0less->code_size = 0;
+    w_0less->immediate = 0;
+    w_0less->next = NULL;
+    dict_add(w_0less);
+
+    Word *w_0greater = malloc(sizeof(Word));
+    strcpy(w_0greater->name, "0>");
+    w_0greater->func = zero_greater;
+    w_0greater->code = NULL;
+    w_0greater->code_size = 0;
+    w_0greater->immediate = 0;
+    w_0greater->next = NULL;
+    dict_add(w_0greater);
     w_semicolon->code = NULL;
     w_semicolon->code_size = 0;
     w_semicolon->immediate = 1;
