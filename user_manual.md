@@ -89,18 +89,32 @@ The interpreter runs in an interactive loop:
 | `*` | `( a b -- product )` | Multiply two numbers |
 | `/` | `( a b -- quotient )` | Divide a by b (integer division) |
 | `mod` | `( a b -- remainder )` | Modulo operation |
+| `/mod` | `( a b -- rem quot )` | Division with both remainder and quotient |
+| `abs` | `( n -- \|n\| )` | Absolute value |
+| `negate` | `( n -- -n )` | Negate (two's complement) |
+| `min` | `( a b -- min )` | Return minimum of two values |
+| `max` | `( a b -- max )` | Return maximum of two values |
+| `1+` | `( n -- n+1 )` | Increment by 1 |
+| `1-` | `( n -- n-1 )` | Decrement by 1 |
+| `2*` | `( n -- n*2 )` | Multiply by 2 |
+| `2/` | `( n -- n/2 )` | Divide by 2 |
 
 ### Stack Manipulation
 
 | Word | Stack Effect | Description |
 |------|-------------|-------------|
 | `dup` | `( a -- a a )` | Duplicate top stack item |
+| `?dup` | `( n -- 0 \| n n )` | Duplicate if non-zero |
 | `drop` | `( a -- )` | Remove top stack item |
 | `swap` | `( a b -- b a )` | Swap top two stack items |
 | `over` | `( a b -- a b a )` | Copy second item to top |
 | `rot` | `( a b c -- b c a )` | Rotate top three items |
 | `nip` | `( a b -- b )` | Remove second item |
 | `tuck` | `( a b -- b a b )` | Insert copy of top under second |
+| `2dup` | `( a b -- a b a b )` | Duplicate top two items |
+| `2drop` | `( a b -- )` | Remove top two items |
+| `2swap` | `( a b c d -- c d a b )` | Swap top two pairs |
+| `depth` | `( -- n )` | Return number of items on stack |
 
 ### Comparison Operations
 
@@ -112,8 +126,18 @@ The interpreter runs in an interactive loop:
 | `<=` | `( a b -- flag )` | True if a <= b |
 | `>=` | `( a b -- flag )` | True if a >= b |
 | `<>` | `( a b -- flag )` | True if a != b |
+| `0=` | `( n -- flag )` | True if n equals zero |
+| `0<` | `( n -- flag )` | True if n is negative |
+| `0>` | `( n -- flag )` | True if n is positive |
 
 **Note**: Comparison operations return -1 for true, 0 for false.
+
+### Constants
+
+| Word | Stack Effect | Description |
+|------|-------------|-------------|
+| `true` | `( -- -1 )` | Push boolean true value |
+| `false` | `( -- 0 )` | Push boolean false value |
 
 ### Logical Operations
 
@@ -121,7 +145,10 @@ The interpreter runs in an interactive loop:
 |------|-------------|-------------|
 | `and` | `( a b -- result )` | Bitwise AND |
 | `or` | `( a b -- result )` | Bitwise OR |
-| `not` | `( a -- result )` | Bitwise NOT |
+| `not` | `( a -- result )` | Bitwise NOT (one's complement) |
+| `xor` | `( a b -- result )` | Bitwise exclusive OR |
+| `lshift` | `( n u -- result )` | Left shift n by u bits |
+| `rshift` | `( n u -- result )` | Right shift n by u bits |
 
 ### Memory Operations
 
@@ -129,15 +156,58 @@ The interpreter runs in an interactive loop:
 |------|-------------|-------------|
 | `!` | `( value addr -- )` | Store value at address |
 | `@` | `( addr -- value )` | Fetch value from address |
+| `+!` | `( n addr -- )` | Add n to value at address |
+| `c!` | `( c addr -- )` | Store byte at address |
+| `c@` | `( addr -- c )` | Fetch byte from address |
+| `,` | `( n -- )` | Compile n into memory, increment HERE |
+| `here` | `( -- addr )` | Return next available memory address |
 
 ### I/O Operations
 
 | Word | Stack Effect | Description |
 |------|-------------|-------------|
-| `.` | `( n -- )` | Print top of stack |
+| `.` | `( n -- )` | Print number (respects current base) |
 | `.s` | `( -- )` | Print entire stack |
 | `cr` | `( -- )` | Print newline |
-| `."` | `( -- )` | Print string literal |
+| `."` | `( -- )` | Print string literal (usage: `." text" `) |
+| `emit` | `( c -- )` | Output character |
+| `space` | `( -- )` | Output single space |
+| `spaces` | `( n -- )` | Output n spaces |
+| `u.` | `( u -- )` | Print unsigned number |
+| `.r` | `( n width -- )` | Print number right-justified in field |
+| `.h` | `( n -- )` | Print number in hexadecimal |
+
+### Return Stack Operations
+
+The return stack is used for temporary value storage and loop control. **Use with caution** - improper use can break loops and word definitions.
+
+| Word | Stack Effect | Description |
+|------|-------------|-------------|
+| `>r` | `( n -- ) (R: -- n )` | Move top of data stack to return stack |
+| `r>` | `( -- n ) (R: n -- )` | Move top of return stack to data stack |
+| `r@` | `( -- n ) (R: n -- n )` | Copy top of return stack to data stack |
+
+**Warning**: Return stack operations must be balanced within word definitions. Items pushed with `>r` must be popped with `r>` before word completion.
+
+### Number Base Control
+
+These words change how numbers are input and displayed:
+
+| Word | Effect | Description |
+|------|--------|-------------|
+| `decimal` | Sets base to 10 | Default mode for decimal I/O |
+| `hex` | Sets base to 16 | Hexadecimal mode for I/O |
+| `binary` | Sets base to 2 | Binary mode for I/O |
+
+**Note**: Changing the base affects both input parsing and output formatting with `.` word.
+
+Example:
+```forth
+decimal 255 .     \ Outputs: 255
+hex 255 .         \ Outputs: ff
+binary 5 .        \ Outputs: 101
+decimal           \ Return to decimal mode
+```
 
 ### Control Flow
 
@@ -248,6 +318,78 @@ Create named constants:
 42 CONSTANT answer
 answer .         \ Prints 42
 ```
+### Return Stack Usage
+
+Use the return stack for temporary storage in complex calculations:
+
+```
+: average 2dup + 2 / >r 2drop r> ;
+10 20 average .
+```
+Prints: 15
+
+```
+: process >r dup * r> + ;
+5 10 process .
+```
+Prints: 35 (5*5 + 10)
+
+**Important**: Always balance `>r` with `r>` within a word definition!
+
+### Number Base Operations
+
+Work with hexadecimal, binary, or decimal:
+
+```
+decimal 255 .
+hex 255 .
+binary 5 .
+decimal
+```
+Outputs: 255, ff, 101
+
+### Byte Operations
+
+Store and retrieve individual bytes:
+
+```
+VARIABLE name
+65 name c!
+name c@ emit
+```
+Outputs: A
+
+### Memory Increment
+
+Efficiently increment variables:
+
+```
+VARIABLE counter
+0 counter !
+1 counter +!
+counter @ .
+5 counter +!
+counter @ .
+```
+Outputs: 1, 6
+
+### Formatted Output
+
+Create aligned output:
+
+```
+: print-row i 5 .r i dup * 5 .r cr ;
+5 0 do print-row loop
+```
+Outputs:
+```
+    0     0
+    1     1
+    2     4
+    3     9
+    4    16
+```
+
 
 ### Memory Management
 
