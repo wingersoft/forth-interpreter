@@ -23,7 +23,68 @@ char *input_pos = NULL;              // Current position in input string during 
 
 // Control flow - Stack for managing compilation of control structures
 BranchStack branch_stack = {{{0, CF_END}}, -1}; // Stack for tracking branch points in control flow
-char *parse_string(char *str);       // Forward declaration for string parsing function
+
+// Tokenizer - Extracts the next word from the input stream
+char *tokenize(char *token) {
+    if (!input_pos || *input_pos == '\0') {
+        return NULL;
+    }
+    while (*input_pos && isspace(*input_pos)) {
+        input_pos++;
+    }
+    if (*input_pos == '\0') {
+        return NULL;
+    }
+
+    // Handle comments
+    if (*input_pos == '(') {
+        input_pos++; // Skip '('
+        while (*input_pos && *input_pos != ')') {
+            input_pos++;
+        }
+        if (*input_pos == ')') {
+            input_pos++; // Skip ')'
+        }
+        return tokenize(token); // Continue tokenizing after the comment
+    }
+    if (*input_pos == '\\') {
+        // Comment until the end of the line
+        while (*input_pos && *input_pos != '\n') {
+            input_pos++;
+        }
+        return tokenize(token); // Continue tokenizing after the comment
+    }
+
+    int i = 0;
+    while (*input_pos && !isspace(*input_pos) && i < MAX_WORD_LEN - 1) {
+        token[i++] = *input_pos++;
+    }
+    token[i] = '\0';
+    return token;
+}
+
+// String parser - Extracts a string literal from the input, handling escaped quotes
+char *parse_string(char *str) {
+    if (!input_pos || *input_pos == '\0') {
+        return NULL;
+    }
+    int i = 0;
+    while (*input_pos) {
+        if (*input_pos == '"') {
+            input_pos++; // Consume closing quote
+            str[i] = '\0';
+            return str;
+        }
+        if (*input_pos == '\\' && *(input_pos + 1) == '"') {
+            str[i++] = '"';
+            input_pos += 2;
+        } else {
+            str[i++] = *input_pos++;
+        }
+    }
+    return NULL; // Unterminated string
+}
+
 
 // Stack operations - Core functions for manipulating the data stack
 
@@ -1844,6 +1905,10 @@ void loop_word(void)
     }
 }
 
+void quit_word(void) {
+    exit(0);
+}
+
 // Initialize the interpreter - Set up all core data structures and built-in words
 void forth_init(void)
 {
@@ -2663,80 +2728,21 @@ void forth_init(void)
     w_0greater->immediate = 0;
     w_0greater->next = NULL;
     dict_add(w_0greater);
+
+    Word *w_quit = malloc(sizeof(Word));
+    strcpy(w_quit->name, "quit");
+    w_quit->func = quit_word;
+    w_quit->code = NULL;
+    w_quit->code_size = 0;
+    w_quit->immediate = 0;
+    w_quit->next = NULL;
+    dict_add(w_quit);
+
     w_semicolon->code = NULL;
     w_semicolon->code_size = 0;
     w_semicolon->immediate = 1;
     w_semicolon->next = NULL;
     dict_add(w_semicolon);
-}
-
-// Simple tokenizer - Parse input text into individual words and tokens
-/**
- * Extract the next token from input stream
- * @param token Buffer to store the extracted token
- * @return Pointer to next position in input, or NULL if no more tokens
- */
-char *tokenize(char *token)
-{
-    // Skip leading whitespace
-    while (*input_pos && isspace(*input_pos))
-        input_pos++;
-    if (!*input_pos)  // End of input
-        return NULL;
-
-    char *start = input_pos;
-
-    // Special handling for .\" (dot-quote) word
-    if (strncmp(start, ".\"", 2) == 0) {
-        input_pos += 2;
-        strncpy(token, start, 2);
-        token[2] = '\0';
-        return input_pos;
-    }
-
-    // Special handling for S\" (s-quote) word
-    if (strncmp(start, "S\"", 2) == 0) {
-        input_pos += 2;
-        strncpy(token, start, 2);
-        token[2] = '\0';
-        return input_pos;
-    }
-
-    // Find end of token (whitespace or end of input)
-    while (*input_pos && !isspace(*input_pos))
-        input_pos++;
-    if (*input_pos)
-        *input_pos++ = '\0';  // Null-terminate token and advance
-
-    // Copy token to output buffer with length limit
-    strncpy(token, start, MAX_WORD_LEN - 1);
-    token[MAX_WORD_LEN - 1] = '\0';
-    return input_pos;
-}
-
-/**
- * Parse a quoted string from input stream
- * @param str Buffer to store the parsed string
- * @return Pointer to parsed string, or NULL if parsing failed
- */
-char *parse_string(char *str)
-{
-    // Skip leading whitespace
-    while (*input_pos && isspace(*input_pos))
-        input_pos++;
-
-    char *start = input_pos;
-
-    // Find closing quote
-    while (*input_pos && *input_pos != '"')
-        input_pos++;
-
-    if (*input_pos == '"') {
-        *input_pos++ = '\0';  // Replace quote with null terminator
-        strcpy(str, start);   // Copy the string content
-        return str;
-    }
-    return NULL;  // No closing quote found
 }
 
 // Main interpreter loop (REPL) - Read-Eval-Print Loop for interactive Forth execution

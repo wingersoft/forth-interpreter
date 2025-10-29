@@ -73,4 +73,4 @@ cr ." --- Complex Examples ---" cr
 1 2 3 test-depth cr drop drop drop
 
 cr ." === All Phase 1 Tests Complete ===" cr
-quit
+
